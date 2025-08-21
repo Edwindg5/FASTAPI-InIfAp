@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session
 from src.AnalisisQuimicosPendientes.infrastructure.analisis_quimicos_model import (
     AnalisisQuimicosPendientes,
 )
+from src.municipios.infrastructure.municipios_model import Municipios
+from src.Users.infrastructure.users_model import Users  # ¡NUEVA IMPORTACIÓN!
 
 # ===================== Helpers de normalización y limpieza ===================== #
 
@@ -128,6 +130,60 @@ def _to_decimal(v) -> Optional[float]:
         return None
 
 
+# ===================== Nueva función para validar usuario ===================== #
+
+def _validar_usuario(correo_usuario: str, db: Session) -> Optional[int]:
+    """
+    Valida si el usuario existe en la tabla users por correo electrónico.
+    Retorna el ID_user si existe, None si no existe.
+    """
+    if not correo_usuario or _is_empty_cell(correo_usuario):
+        return None
+    
+    # Normalizar el correo (convertir a minúsculas y quitar espacios)
+    correo_normalizado = correo_usuario.strip().lower()
+    
+    # Buscar usuario en la base de datos
+    usuario = db.query(Users).filter(Users.correo == correo_normalizado).first()
+    
+    if usuario:
+        return usuario.ID_user
+    
+    return None
+
+
+# ===================== Nueva función para validar municipio ===================== #
+
+def _validar_municipio(nombre_municipio: str, db: Session) -> Optional[int]:
+    """
+    Valida si el municipio existe en la tabla municipios.
+    Retorna el id_municipio si existe, None si no existe.
+    Usa normalización de texto para comparación flexible.
+    """
+    if not nombre_municipio or _is_empty_cell(nombre_municipio):
+        return None
+    
+    # Normalizar el nombre del municipio del Excel
+    municipio_normalizado = _norm_text(nombre_municipio)
+    
+    # Buscar en la base de datos
+    municipios = db.query(Municipios).all()
+    
+    for municipio_db in municipios:
+        if municipio_db.nombre:
+            nombre_db_normalizado = _norm_text(municipio_db.nombre)
+            
+            # Comparación exacta normalizada
+            if municipio_normalizado == nombre_db_normalizado:
+                return municipio_db.id_municipio
+            
+            # Comparación parcial (contenido)
+            if municipio_normalizado in nombre_db_normalizado or nombre_db_normalizado in municipio_normalizado:
+                return municipio_db.id_municipio
+    
+    return None
+
+
 # ----------- Mapeo de nombres esperados a posibles sinónimos/variantes ---------- #
 
 EXPECTED_MAP: Dict[str, List[str]] = {
@@ -139,11 +195,11 @@ EXPECTED_MAP: Dict[str, List[str]] = {
     "limo": ["limo", "porc_limo", "limo_", "silt"],
     "arena": ["arena", "porc_arena", "arena_", "sand"],
     "textura": ["textura", "clase_textural", "texture"],
-    "da": ["da", "densidad_aparente", "dens_aparente", "densidadaparente", "bulk_density"],
+    "da": ["da", "da_", "densidad_aparente", "dens_aparente", "densidadaparente", "bulk_density"],
     "ph": ["ph", "p_h"],
-    "mo": ["mo", "materia_organica", "materiaorganica", "organic_matter"],
+    "mo": ["mo", "mo_", "materia_organica", "materiaorganica", "organic_matter"],
     "fosforo": ["fosforo", "p", "p_olsen", "p_bray", "p_disp", "phosphorus"],
-    "n_inorganico": ["n_inorganico", "nmineral", "n_mineral", "n_inorganico_", "nitrogen"],
+    "n_inorganico": ["n_inorganico", "nmineral", "n_mineral", "n_inorganico_", "nitrogen", "n_inorganico", "nitrogeno_inorganico"],
     "k": ["k", "potasio", "k_intercambiable", "potassium"],
     "mg": ["mg", "magnesio", "magnesium"],
     "ca": ["ca", "calcio", "calcium"],
@@ -154,17 +210,17 @@ EXPECTED_MAP: Dict[str, List[str]] = {
     "h": ["h", "hidrogeno", "hydrogen"],
     "azufre": ["azufre", "s", "sulfatos", "s_disp", "sulfur"],
     "hierro": ["hierro", "fe", "iron"],
-    "cobre": ["cobre", "cu", "copper"],
+    "cobre": ["cobre", "cobre_", "cu", "copper"],
     "zinc": ["zinc", "zn"],
     "manganeso": ["manganeso", "mn", "manganese"],
     "boro": ["boro", "b", "boron"],
     "columna1": ["columna1", "extra1", "obs1", "observacion1"],
     "columna2": ["columna2", "extra2", "obs2", "observacion2"],
-    "ca_mg": ["ca_mg", "rel_ca_mg", "ca_mg_razon", "camg"],
-    "mg_k": ["mg_k", "rel_mg_k", "mg_k_razon", "mgk"],
-    "ca_k": ["ca_k", "rel_ca_k", "ca_k_razon", "cak"],
-    "ca_mg_k": ["ca_mg_k", "rel_ca_mg_k", "camgk"],
-    "k_mg": ["k_mg", "rel_k_mg", "k_mg_razon", "kmg"],
+    "ca_mg": ["ca_mg", "rel_ca_mg", "ca_mg_razon", "camg", "ca/mg"],
+    "mg_k": ["mg_k", "rel_mg_k", "mg_k_razon", "mgk", "mg/k"],
+    "ca_k": ["ca_k", "rel_ca_k", "ca_k_razon", "cak", "ca/k"],
+    "ca_mg_k": ["ca_mg_k", "rel_ca_mg_k", "camgk", "(ca_mg)/k", "ca_mg_k", "(ca₊mg)/k", "(ca+mg)/k"],
+    "k_mg": ["k_mg", "rel_k_mg", "k_mg_razon", "kmg", "k/mg"],
 }
 
 NUMERIC_FIELDS = [
@@ -235,7 +291,23 @@ def _build_column_map(cols: List[str]) -> Dict[str, Optional[str]]:
     # Crear una copia de las columnas disponibles para rastrear cuáles ya se usaron
     available_cols = list(cols)
 
+    # PASO 1: Mapeos exactos primero (incluyendo casos especiales)
+    special_mappings = {
+        "N.INORGANICO": "n_inorganico",
+        "NA": "na"
+    }
+    
+    for col in list(available_cols):
+        if col in special_mappings:
+            field = special_mappings[col]
+            mapping[field] = col
+            available_cols.remove(col)
+
+    # PASO 2: Mapeos usando el sistema de variantes
     for exp, variants in EXPECTED_MAP.items():
+        if mapping[exp] is not None:  # Ya mapeado en paso 1
+            continue
+            
         candidates = variants + [exp]
         best_match = None
         best_score = 0
@@ -303,12 +375,32 @@ def _get_val(row: pd.Series, colname: Optional[str]):
 
 # ============================ Función principal corregida ================================ #
 
-def procesar_excel_y_guardar(file_bytes: bytes, db: Session):
+def procesar_excel_y_guardar(file_bytes: bytes, correo_usuario: str, db: Session):
     """
     Lee el Excel desde bytes, detecta encabezados, mapea columnas, limpia/convierte valores,
-    hace forward-fill en campos clave y guarda en BD. Devuelve un resumen.
+    hace forward-fill en campos clave, valida municipios y usuario contra la BD y guarda en BD. 
+    Devuelve un resumen.
+    
+    Args:
+        file_bytes: Contenido del archivo Excel en bytes
+        correo_usuario: Correo del usuario que está subiendo el archivo
+        db: Sesión de base de datos
     """
     try:
+        # ===== VALIDAR USUARIO PRIMERO =====
+        user_id = _validar_usuario(correo_usuario, db)
+        if user_id is None:
+            return {
+                "success": False,
+                "error": f"Usuario con correo '{correo_usuario}' no encontrado en la base de datos",
+                "rows_total_leidas": 0,
+                "insertadas": 0,
+                "saltadas": 0,
+                "municipios_no_encontrados": 0,
+                "municipios_validados_exitosamente": 0,
+                "errores": [],
+            }
+
         # 1) Leer todo como objeto para preservar tipos. Sin encabezados.
         df_raw = pd.read_excel(io.BytesIO(file_bytes), header=None, engine="openpyxl")
 
@@ -360,7 +452,9 @@ def procesar_excel_y_guardar(file_bytes: bytes, db: Session):
 
         inserted = 0
         skipped = 0
+        municipios_no_encontrados = 0
         errors: List[dict] = []
+        municipios_validados = {}  # Cache para municipios ya validados
 
         # 7) Iterar filas y construir objetos del modelo
         for idx, row in df.iterrows():
@@ -394,8 +488,30 @@ def procesar_excel_y_guardar(file_bytes: bytes, db: Session):
                     skipped += 1
                     continue
 
+                # ===== VALIDAR MUNICIPIO CONTRA LA BASE DE DATOS =====
+                municipio_id_fk = None
+                municipio_nombre = data.get("municipio")
+                
+                if municipio_nombre:
+                    # Usar cache para evitar consultas repetidas
+                    if municipio_nombre in municipios_validados:
+                        municipio_id_fk = municipios_validados[municipio_nombre]
+                    else:
+                        municipio_id_fk = _validar_municipio(municipio_nombre, db)
+                        municipios_validados[municipio_nombre] = municipio_id_fk
+                    
+                    # Si no se encontró el municipio, registrar pero continuar
+                    if municipio_id_fk is None:
+                        municipios_no_encontrados += 1
+                        errors.append({
+                            "row_index": int(idx), 
+                            "error": f"Municipio '{municipio_nombre}' no encontrado en la base de datos"
+                        })
+
                 # Crear registro
                 registro = AnalisisQuimicosPendientes(
+                    municipio_id_FK=municipio_id_fk,  # ID del municipio validado
+                    user_id_FK=user_id,  # ¡NUEVO! - ID del usuario validado
                     municipio=data.get("municipio"),
                     localidad=data.get("localidad"),
                     nombre_productor=data.get("nombre_productor"),
@@ -450,9 +566,14 @@ def procesar_excel_y_guardar(file_bytes: bytes, db: Session):
         unmapped_columns = [col for col in original_cols if col not in mapped_columns.values()]
         
         return {
+            "success": True,
+            "user_id": user_id,  # ¡NUEVO! - ID del usuario validado
+            "user_email": correo_usuario,  # ¡NUEVO! - Correo del usuario
             "rows_total_leidas": int(len(df)),
             "insertadas": int(inserted),
             "saltadas": int(skipped),
+            "municipios_no_encontrados": int(municipios_no_encontrados),
+            "municipios_validados_exitosamente": int(inserted - municipios_no_encontrados),
             "errores": errors[:10],  # Limitar errores mostrados
             "header_row_idx": int(header_row_idx),
             "column_map": col_map,
@@ -464,9 +585,13 @@ def procesar_excel_y_guardar(file_bytes: bytes, db: Session):
 
     except Exception as e:
         return {
+            "success": False,
+            "error": f"Error general: {str(e)}",
             "rows_total_leidas": 0,
             "insertadas": 0,
             "saltadas": 0,
+            "municipios_no_encontrados": 0,
+            "municipios_validados_exitosamente": 0,
             "errores": [{"error": f"Error general: {str(e)}"}],
             "header_row_idx": 0,
             "column_map": {},

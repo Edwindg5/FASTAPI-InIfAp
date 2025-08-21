@@ -1,6 +1,7 @@
 # src/AnalisisSuelosPendientes/infrastructure/analisis_suelos_model.py
 from sqlalchemy import Column, Integer, String, Date, DateTime, Text, ForeignKey, func
 from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship
 from src.core.database import Base
 
 class AnalisisSuelosPendientes(Base):
@@ -8,6 +9,7 @@ class AnalisisSuelosPendientes(Base):
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     municipio_id_FK = Column(Integer, ForeignKey("municipios.id_municipio"), nullable=True)
+    user_id_FK = Column(Integer, ForeignKey("users.ID_user"), nullable=True)
     numero = Column(Integer, nullable=True)
     clave_estatal = Column(Integer, nullable=True)
     estado_cuadernillo = Column(String(100), nullable=True)
@@ -45,6 +47,3 @@ class AnalisisSuelosPendientes(Base):
     user_id_FK = Column(Integer, ForeignKey("users.ID_user"), nullable=True)
     fecha_creacion = Column(DateTime, default=func.current_timestamp())
     
-    # Relaciones
-    municipio = relationship("Municipios", back_populates="analisis_suelos_pendientes")
-    usuario = relationship("Users", back_populates="analisis_suelos_pendientes")

@@ -1,5 +1,6 @@
-#src/AnalisisQuimicosPendientes/infrastructure/analisis_quimicos_model.py
+# src/AnalisisQuimicosPendientes/infrastructure/analisis_quimicos_model.py
 from sqlalchemy import Column, Integer, String, DECIMAL, DateTime, ForeignKey
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from src.core.database import Base
 
@@ -8,6 +9,7 @@ class AnalisisQuimicosPendientes(Base):
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     municipio_id_FK = Column(Integer, ForeignKey("municipios.id_municipio"), nullable=True)
+    user_id_FK = Column(Integer, ForeignKey("users.ID_user"), nullable=True)
 
     municipio = Column(String(100), nullable=True)
     localidad = Column(String(100), nullable=True)
@@ -48,5 +50,5 @@ class AnalisisQuimicosPendientes(Base):
 
     estatus = Column(String(20), default="pendiente")
     comentario_invalido = Column(String(255), nullable=True)
-    user_id_FK = Column(Integer, ForeignKey("users.ID_user"), nullable=True)
     fecha_creacion = Column(DateTime, default=func.now())
+

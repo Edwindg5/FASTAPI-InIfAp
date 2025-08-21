@@ -14,6 +14,3 @@ class Users(Base):
     password = Column(String(255), nullable=True)
     rol_id_FK = Column(Integer, ForeignKey("rol.id_rol"), nullable=True)
     
-    # Relaciones
-    analisis_quimicos_pendientes = relationship("AnalisisQuimicosPendientes", back_populates="usuario")
-    analisis_suelos_pendientes = relationship("AnalisisSuelosPendientes", back_populates="usuario")

@@ -1,6 +1,5 @@
 # src/municipios/infrastructure/municipios_model.py
 from sqlalchemy import Column, Integer, String
-from sqlalchemy.orm import relationship
 from src.core.database import Base
 
 class Municipios(Base):
@@ -11,6 +10,5 @@ class Municipios(Base):
     clave_municipio = Column(Integer, nullable=True)
     nombre = Column(String(100), nullable=True)
     
-    # Relaciones
-    analisis_quimicos_pendientes = relationship("AnalisisQuimicosPendientes", back_populates="municipio")
-    analisis_suelos_pendientes = relationship("AnalisisSuelosPendientes", back_populates="municipio")
+    # SIN RELACIONES para evitar conflictos de configuración
+    # Puedes acceder a los análisis relacionados usando joins cuando sea necesario

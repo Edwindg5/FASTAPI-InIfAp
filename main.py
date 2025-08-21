@@ -7,6 +7,7 @@ from src.AnalisisSuelosPendientes.infrastructure.analisis_suelos_model import An
 from src.AnalisisSuelosPendientes.interfaces import analisis_suelos_router
 from src.Users.infrastructure.users_model import Users
 from src.municipios.infrastructure.municipios_model import Municipios
+from src.municipios.interfaces import municipios_router
 
 # Crear tablas
 Base.metadata.create_all(bind=engine)
@@ -20,6 +21,7 @@ app = FastAPI(
 # Incluir routers
 app.include_router(analisis_quimicos_router.router)
 app.include_router(analisis_suelos_router.router)
+app.include_router(municipios_router.router)
 
 @app.get("/")
 def read_root():
