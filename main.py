@@ -3,10 +3,12 @@ from fastapi import FastAPI
 from src.core.database import Base, engine
 from src.AnalisisQuimicosPendientes.infrastructure.analisis_quimicos_model import AnalisisQuimicosPendientes
 from src.AnalisisQuimicosPendientes.interfaces import analisis_quimicos_router
-from src.AnalisisQuimicosValidados.infrastructure.analisis_quimicos_validados_model import AnalisisQuimicosValidados  # NUEVO
-from src.AnalisisQuimicosValidados.interfaces import quimicos_validados_router  # NUEVO
+from src.AnalisisQuimicosValidados.infrastructure.analisis_quimicos_validados_model import AnalisisQuimicosValidados
+from src.AnalisisQuimicosValidados.interfaces import quimicos_validados_router
 from src.AnalisisSuelosPendientes.infrastructure.analisis_suelos_model import AnalisisSuelosPendientes
 from src.AnalisisSuelosPendientes.interfaces import analisis_suelos_router
+from src.AnalisisSuelosValidados.infrastructure.analisis_suelos_validados_model import AnalisisSuelosValidados  # NUEVO
+from src.AnalisisSuelosValidados.interfaces import suelos_validados_router  # NUEVO
 from src.Users.infrastructure.users_model import Users
 from src.municipios.infrastructure.municipios_model import Municipios
 from src.municipios.interfaces import municipios_router
@@ -22,8 +24,9 @@ app = FastAPI(
 
 # Incluir routers
 app.include_router(analisis_quimicos_router.router)
-app.include_router(quimicos_validados_router.router)  # NUEVO ROUTER
+app.include_router(quimicos_validados_router.router)
 app.include_router(analisis_suelos_router.router)
+app.include_router(suelos_validados_router.router)  # NUEVO ROUTER
 app.include_router(municipios_router.router)
 
 @app.get("/")
