@@ -1,11 +1,11 @@
-# src/AnalisisQuimicosPendientes/infrastructure/analisis_quimicos_model.py
+# src/AnalisisQuimicosValidados/infrastructure/analisis_quimicos_validados_model.py
 from sqlalchemy import Column, Integer, String, DECIMAL, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from src.core.database import Base
 
-class AnalisisQuimicosPendientes(Base):
-    __tablename__ = "analisis_quimicos_pendientes"
+class AnalisisQuimicosValidados(Base):
+    __tablename__ = "analisis_quimicos_validados"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     municipio_id_FK = Column(Integer, ForeignKey("municipios.id_municipio"), nullable=True)
@@ -48,8 +48,7 @@ class AnalisisQuimicosPendientes(Base):
     ca_mg_k = Column(DECIMAL(10,2), nullable=True)
     k_mg = Column(DECIMAL(10,2), nullable=True)
 
-    estatus = Column(String(20), default="pendiente")
-    comentario_invalido = Column(String(255), nullable=True)
+    fecha_validacion = Column(DateTime, default=func.now())
     fecha_creacion = Column(DateTime, default=func.now())
 
     # Relaciones
