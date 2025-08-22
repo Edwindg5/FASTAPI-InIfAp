@@ -72,25 +72,3 @@ def get_analisis_suelos_by_id(
         raise HTTPException(status_code=404, detail="Análisis de suelos no encontrado")
     return analisis
 
-@router.post("/", response_model=AnalisisSuelosResponse)
-def create_analisis_suelos(
-    analisis_data: AnalisisSuelosCreate,
-    db: Session = Depends(get_db)
-):
-    """
-    Crea un nuevo análisis de suelos pendiente
-    """
-    return AnalisisSuelosService.create_analisis_suelos(db=db, analisis_data=analisis_data)
-
-@router.delete("/{analisis_id}")
-def delete_analisis_suelos(
-    analisis_id: int,
-    db: Session = Depends(get_db)
-):
-    """
-    Elimina un análisis de suelos por ID
-    """
-    deleted = AnalisisSuelosService.delete_analisis_suelos(db, analisis_id)
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Análisis de suelos no encontrado")
-    return {"message": "Análisis de suelos eliminado exitosamente"}
