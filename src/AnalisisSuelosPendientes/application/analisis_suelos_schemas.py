@@ -1,7 +1,7 @@
 # src/AnalisisSuelosPendientes/application/analisis_suelos_schemas.py
 from pydantic import BaseModel
 from datetime import date, datetime
-from typing import Optional
+from typing import Optional, List
 
 class AnalisisSuelosBase(BaseModel):
     municipio_id_FK: Optional[int] = None
@@ -56,4 +56,6 @@ class UploadResponse(BaseModel):
     records_processed: int
     success_count: int
     error_count: int
-    errors: list = []
+    processing_time_seconds: float = 0.0  
+    errors: List[str] = []
+    municipios_not_found: List[str] = []
