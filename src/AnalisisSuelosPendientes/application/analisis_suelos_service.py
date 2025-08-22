@@ -11,15 +11,59 @@ from src.municipios.infrastructure.municipios_model import Municipios
 
 class AnalisisSuelosService:
     
+    # Mapeo correcto de columnas de Excel a campos de BD
+    COLUMN_MAPPING = {
+        'N°': 'numero',
+        'Clave estatal': 'clave_estatal', 
+        'estado_cuadernillo': 'estado_cuadernillo',
+        'Clave municipio': 'clave_municipio',
+        'clave munip': 'clave_munip',
+        'municipio_cuadernillo': 'municipio_cuadernillo',
+        'Clave localidad': 'clave_localidad',
+        'localidad_cuadernillo': 'localidad_cuadernillo',
+        'Recuento de CURP_Renapo': 'recuento_curp_renapo',
+        ' Recuento de CURP_Renapo ': 'recuento_curp_renapo',  # Con espacios
+        'extraccion edo': 'extraccion_edo',
+        'CLAVE': 'clave',
+        'DDR': 'ddr',
+        'CADER': 'cader',
+        'X': 'coordenada_x',
+        'Y': 'coordenada_y',
+        'Elevacion msnm': 'elevacion_msnm',
+        'Profundidad de muestreo': 'profundidad_muestreo',
+        'Fecha de muestreo': 'fecha_muestreo',
+        'Parcela': 'parcela',
+        'Cultivo anterior': 'cultivo_anterior',
+        'Cultivo a establecer': 'cultivo_establecer',
+        'Manejo': 'manejo',
+        'Tipo vegetación': 'tipo_vegetacion',
+        # Datos del técnico (primeras columnas)
+        'Nombre': 'nombre_tecnico',
+        'Tel': 'tel_tecnico',
+        'Correo': 'correo_tecnico',
+        # Datos del productor (columnas renombradas por pandas)
+        'Nombre.1': 'nombre_productor',
+        'Tel.1': 'tel_productor',
+        'Correo.1': 'correo_productor',
+        # Posibles variaciones de nombres que pandas podría crear
+        'Nombre ': 'nombre_tecnico',        # Con espacio al final
+        'Tel ': 'tel_tecnico',              # Con espacio al final
+        'Correo ': 'correo_tecnico',        # Con espacio al final
+        'Nombre .1': 'nombre_productor',    # Con espacio antes del .1
+        'Tel .1': 'tel_productor',          # Con espacio antes del .1
+        'Correo .1': 'correo_productor',    # Con espacio antes del .1
+        # Campos finales
+        'Muestra': 'muestra',
+        'Reemplazo': 'reemplazo',
+        'NOMBRE REVISOR': 'nombre_revisor'
+    }
+    
     @staticmethod
     def cache_municipios(db: Session) -> Dict[str, int]:
-        """
-        🚀 OPTIMIZACIÓN: Cache todos los municipios en memoria para búsqueda rápida
-        """
-        print("🚀 Cargando cache de municipios...")
+        """Cache todos los municipios en memoria para búsqueda rápida"""
+        print("Cargando cache de municipios...")
         municipios_cache = {}
         
-        # Obtener todos los municipios de una vez
         municipios = db.query(Municipios).all()
         
         for municipio in municipios:
@@ -31,7 +75,7 @@ class AnalisisSuelosService:
                 municipios_cache[nombre.lower()] = municipio.id_municipio
                 municipios_cache[nombre.strip()] = municipio.id_municipio
                 
-                # Versión sin acentos (básica)
+                # Versión sin acentos
                 nombre_sin_acentos = (nombre.replace('á', 'a').replace('é', 'e')
                                     .replace('í', 'i').replace('ó', 'o').replace('ú', 'u')
                                     .replace('ñ', 'n').replace('Á', 'A').replace('É', 'E')
@@ -39,14 +83,12 @@ class AnalisisSuelosService:
                                     .replace('Ñ', 'N'))
                 municipios_cache[nombre_sin_acentos.upper()] = municipio.id_municipio
         
-        print(f"✓ Cache cargado: {len(municipios)} municipios únicos, {len(municipios_cache)} variaciones")
+        print(f"Cache cargado: {len(municipios)} municipios únicos")
         return municipios_cache
     
     @staticmethod
     def find_municipio_id_fast(municipio_nombre: str, municipios_cache: Dict[str, int]) -> int:
-        """
-        🚀 OPTIMIZACIÓN: Búsqueda ultra rápida usando cache en memoria
-        """
+        """Búsqueda ultra rápida usando cache en memoria"""
         if not municipio_nombre or pd.isna(municipio_nombre):
             return None
             
@@ -55,12 +97,12 @@ class AnalisisSuelosService:
         if not municipio_clean or municipio_clean.lower() == 'nan':
             return None
         
-        # Búsquedas progresivas en cache (sin queries SQL)
+        # Búsquedas progresivas en cache
         search_variants = [
-            municipio_clean,                    # Exacto
-            municipio_clean.upper(),           # Mayúsculas
-            municipio_clean.lower(),           # Minúsculas
-            municipio_clean.strip(),           # Sin espacios
+            municipio_clean,
+            municipio_clean.upper(),
+            municipio_clean.lower(),
+            municipio_clean.strip(),
         ]
         
         # Búsqueda directa en cache
@@ -68,7 +110,7 @@ class AnalisisSuelosService:
             if variant in municipios_cache:
                 return municipios_cache[variant]
         
-        # Búsqueda parcial en cache (más lenta pero aún en memoria)
+        # Búsqueda parcial en cache
         municipio_upper = municipio_clean.upper()
         for cached_name, municipio_id in municipios_cache.items():
             if municipio_upper in cached_name.upper() or cached_name.upper() in municipio_upper:
@@ -78,9 +120,7 @@ class AnalisisSuelosService:
     
     @staticmethod
     def process_date_fast(value) -> datetime.date:
-        """
-        🚀 OPTIMIZACIÓN: Procesamiento rápido de fechas
-        """
+        """Procesamiento robusto de fechas"""
         if pd.isna(value) or value == '' or str(value).strip() == '':
             return None
         
@@ -91,21 +131,29 @@ class AnalisisSuelosService:
             
             # Si es string
             if isinstance(value, str):
-                value_clean = value.strip().replace('/', '/').replace('-', '/')
+                value_clean = value.strip()
                 
-                # Caso especial "07/052024"
-                if '/' in value_clean:
+                # Caso especial "07/052024" -> "07/05/2024"
+                if '/' in value_clean and len(value_clean) <= 10:
                     parts = value_clean.split('/')
                     if len(parts) == 2 and len(parts[1]) >= 6:
                         day = parts[0]
                         month_year = parts[1]
-                        if len(month_year) == 6:
-                            month = month_year[:2]
-                            year = month_year[2:]
+                        if len(month_year) == 6:  # "052024"
+                            month = month_year[:2]   # "05"
+                            year = month_year[2:]    # "2024"
                             value_clean = f"{day}/{month}/{year}"
                 
-                # Intentar formatos más comunes primero (optimización)
-                date_formats = ['%d/%m/%Y', '%d/%m/%y', '%Y-%m-%d', '%d-%m-%Y', '%d-%m-%y']
+                # Intentar formatos más comunes primero
+                date_formats = [
+                    '%d/%m/%Y',  # 07/05/2024
+                    '%d/%m/%y',  # 07/05/24
+                    '%Y-%m-%d',  # 2024-05-07
+                    '%d-%m-%Y',  # 07-05-2024
+                    '%d-%m-%y',  # 07-05-24
+                    '%m/%d/%Y',  # 05/07/2024
+                    '%m-%d-%Y'   # 05-07-2024
+                ]
                 
                 for fmt in date_formats:
                     try:
@@ -114,40 +162,96 @@ class AnalisisSuelosService:
                         continue
             
             return None
-        except:
+        except Exception as e:
+            print(f"Error procesando fecha '{value}': {str(e)}")
             return None
     
     @staticmethod
     def process_int_fast(value) -> int:
-        """
-        🚀 OPTIMIZACIÓN: Conversión rápida a entero
-        """
+        """Conversión robusta a entero"""
         if pd.isna(value) or value == '' or str(value).strip() == '':
             return None
         
         try:
             # Limpiar y convertir
             clean_value = str(value).replace(',', '').replace(' ', '').strip()
-            return int(float(clean_value)) if clean_value else None
-        except:
+            if clean_value and clean_value.lower() != 'nan':
+                # Manejar números decimales convertidos a enteros
+                return int(float(clean_value))
+            return None
+        except Exception as e:
+            print(f"Error procesando número '{value}': {str(e)}")
             return None
     
     @staticmethod
-    def process_text_fast(value) -> str:
-        """
-        🚀 OPTIMIZACIÓN: Procesamiento rápido de texto
-        """
+    def process_text_fast(value, max_length: int = None) -> str:
+        """Procesamiento robusto de texto con límite de longitud"""
         if pd.isna(value) or value == '':
             return None
         
         clean_text = str(value).strip()
-        return clean_text if clean_text and clean_text.lower() != 'nan' else None
+        if not clean_text or clean_text.lower() in ['nan', 'none', '']:
+            return None
+        
+        # Aplicar límite de longitud si se especifica
+        if max_length and len(clean_text) > max_length:
+            clean_text = clean_text[:max_length]
+            print(f"Texto truncado a {max_length} caracteres: {clean_text}")
+        
+        return clean_text
+    
+    @staticmethod
+    def safe_get_column_value(row, column_name: str, df_columns: list):
+        """Obtiene valor de columna de manera segura"""
+        try:
+            if column_name in df_columns:
+                idx = df_columns.index(column_name)
+                if idx < len(row):
+                    return row.iloc[idx]
+            return None
+        except Exception as e:
+            print(f"Error obteniendo valor de columna '{column_name}': {str(e)}")
+            return None
+    
+    @staticmethod
+    def check_row_has_any_data(row) -> bool:
+        """Verifica si una fila tiene algún dato válido en cualquier columna"""
+        for value in row:
+            if pd.notna(value) and str(value).strip() not in ['', 'nan', 'None', 'null']:
+                return True
+        return False
+    
+    @staticmethod
+    def dynamic_column_mapping(df_columns: list) -> Dict[str, str]:
+        """Crea mapeo dinámico basado en las columnas reales del Excel"""
+        dynamic_mapping = {}
+        
+        # Identificar columnas Nombre, Tel, Correo automáticamente
+        nombre_cols = [col for col in df_columns if 'nombre' in col.lower() or col.strip() == 'Nombre']
+        tel_cols = [col for col in df_columns if 'tel' in col.lower() or col.strip() == 'Tel']
+        correo_cols = [col for col in df_columns if 'correo' in col.lower() or col.strip() == 'Correo']
+        
+        # Mapear primera aparición a técnico
+        if len(nombre_cols) >= 1:
+            dynamic_mapping[nombre_cols[0]] = 'nombre_tecnico'
+        if len(tel_cols) >= 1:
+            dynamic_mapping[tel_cols[0]] = 'tel_tecnico'
+        if len(correo_cols) >= 1:
+            dynamic_mapping[correo_cols[0]] = 'correo_tecnico'
+            
+        # Mapear segunda aparición a productor
+        if len(nombre_cols) >= 2:
+            dynamic_mapping[nombre_cols[1]] = 'nombre_productor'
+        if len(tel_cols) >= 2:
+            dynamic_mapping[tel_cols[1]] = 'tel_productor'
+        if len(correo_cols) >= 2:
+            dynamic_mapping[correo_cols[1]] = 'correo_productor'
+        
+        return dynamic_mapping
     
     @staticmethod
     def bulk_insert_optimized(records: List[Dict], db: Session) -> Tuple[int, int, List[str]]:
-        """
-        🚀 OPTIMIZACIÓN: Inserción masiva ultra rápida usando SQL crudo
-        """
+        """Inserción masiva ultra rápida usando SQL crudo - SIN LÍMITES DE 1000"""
         if not records:
             return 0, 0, []
         
@@ -177,11 +281,11 @@ class AnalisisSuelosService:
                 VALUES ({placeholders})
             """)
             
-            # Insertar en lotes para mejor rendimiento
-            BATCH_SIZE = 500  # Ajustable según tu BD
+            # CAMBIO CRÍTICO: Aumentar tamaño del lote para manejar más registros
+            BATCH_SIZE = 500  # Incrementado de 200 a 500 para mejor rendimiento
             total_batches = (len(records) + BATCH_SIZE - 1) // BATCH_SIZE
             
-            print(f"🚀 Insertando {len(records)} registros en {total_batches} lotes de {BATCH_SIZE}...")
+            print(f"INSERTANDO {len(records)} REGISTROS TOTAL en {total_batches} lotes de {BATCH_SIZE}...")
             
             for i in range(0, len(records), BATCH_SIZE):
                 batch = records[i:i + BATCH_SIZE]
@@ -191,183 +295,254 @@ class AnalisisSuelosService:
                     # Ejecutar lote
                     db.execute(insert_sql, batch)
                     success_count += len(batch)
-                    print(f"  ✓ Lote {batch_num}/{total_batches}: {len(batch)} registros insertados")
+                    print(f"  ✅ Lote {batch_num}/{total_batches}: {len(batch)} registros insertados (Total: {success_count}/{len(records)})")
+                    
+                    # COMMITEAR cada lote para evitar problemas de memoria
+                    db.commit()
                     
                 except Exception as e:
                     error_count += len(batch)
                     error_msg = f"Error en lote {batch_num}: {str(e)}"
                     errors.append(error_msg)
-                    print(f"  ✗ {error_msg}")
+                    print(f"  ❌ Error: {error_msg}")
+                    db.rollback()  # Rollback solo del lote fallido
                     continue
             
-            # Confirmar transacción
-            if success_count > 0:
-                db.commit()
-                print(f"✓ Transacción confirmada: {success_count} registros insertados exitosamente")
+            print(f"🎉 INSERCIÓN COMPLETADA: {success_count} registros insertados exitosamente de {len(records)} totales")
             
         except Exception as e:
-            db.rollback()
-            error_msg = f"Error en inserción masiva: {str(e)}"
+            error_msg = f"Error crítico en inserción masiva: {str(e)}"
             errors.append(error_msg)
-            print(f"✗ {error_msg}")
+            print(f"💥 Error general: {error_msg}")
+            db.rollback()
         
         return success_count, error_count, errors
     
     @staticmethod
     def process_excel_file(file_content: bytes, user_id: int, db: Session) -> Dict[str, Any]:
-        """
-        🚀 VERSIÓN OPTIMIZADA: Procesamiento ultra rápido de Excel
-        """
+        """Procesamiento mejorado de archivo Excel - PROCESANDO TODAS LAS FILAS"""
         try:
-            print("🚀 INICIANDO PROCESAMIENTO OPTIMIZADO...")
+            print("🚀 INICIANDO PROCESAMIENTO DE ARCHIVO EXCEL...")
             start_time = datetime.now()
             
-            # 1. CARGAR CACHE DE MUNICIPIOS (una sola consulta)
+            # 1. Cargar cache de municipios
             municipios_cache = AnalisisSuelosService.cache_municipios(db)
             
-            # 2. LEER EXCEL MÁS EFICIENTE
-            print("📊 Leyendo archivo Excel...")
+            # 2. Leer Excel - SIN LÍMITES
+            print("📖 Leyendo archivo Excel...")
             df = pd.read_excel(io.BytesIO(file_content), engine='openpyxl', header=1)
+            print(f"📋 Archivo cargado: {len(df)} filas, {len(df.columns)} columnas")
             
-            print(f"📊 Archivo cargado: {len(df)} filas")
-            
-            # Limpiar nombres de columnas una sola vez
+            # 3. Limpiar nombres de columnas y mostrarlas para debug
             df.columns = [str(col).strip() for col in df.columns]
+            print("🏷️  Columnas encontradas:")
+            for i, col in enumerate(df.columns[:10]):  # Mostrar solo las primeras 10
+                print(f"  {i}: '{col}'")
+            if len(df.columns) > 10:
+                print(f"  ... y {len(df.columns) - 10} columnas más")
             
-            # 3. MAPEO OPTIMIZADO POR POSICIÓN
-            position_mapping = {
-                0: 'numero', 1: 'clave_estatal', 2: 'estado_cuadernillo', 3: 'clave_municipio',
-                4: 'clave_munip', 5: 'municipio_cuadernillo', 6: 'clave_localidad', 7: 'localidad_cuadernillo',
-                8: 'recuento_curp_renapo', 9: 'extraccion_edo', 10: 'clave', 11: 'ddr', 12: 'cader',
-                13: 'coordenada_x', 14: 'coordenada_y', 15: 'elevacion_msnm', 16: 'profundidad_muestreo',
-                17: 'fecha_muestreo', 18: 'parcela', 19: 'cultivo_anterior', 20: 'cultivo_establecer',
-                21: 'manejo', 22: 'tipo_vegetacion', 23: 'nombre_tecnico', 24: 'tel_tecnico', 25: 'correo_tecnico',
-                26: 'nombre_productor', 27: 'tel_productor', 28: 'correo_productor', 29: 'muestra',
-                30: 'reemplazo', 31: 'nombre_revisor'
-            }
+            # 4. Crear mapeo combinado (estático + dinámico)
+            combined_mapping = AnalisisSuelosService.COLUMN_MAPPING.copy()
+            dynamic_mapping = AnalisisSuelosService.dynamic_column_mapping(df.columns.tolist())
+            combined_mapping.update(dynamic_mapping)
             
-            # 4. PROCESAMIENTO EN LOTES (SIN PRINTS POR FILA)
-            print("⚡ Procesando datos en lotes...")
+            print("🔗 Mapeo de columnas aplicado:")
+            mapped_count = 0
+            for excel_col, db_field in combined_mapping.items():
+                if excel_col in df.columns:
+                    mapped_count += 1
+                    if mapped_count <= 10:  # Mostrar solo los primeros 10
+                        print(f"  '{excel_col}' -> {db_field}")
+            if mapped_count > 10:
+                print(f"  ... y {mapped_count - 10} mapeos más")
             
-            # Campos que necesitan conversión especial
+            # 5. Campos que necesitan conversión especial y límites de longitud
             int_fields = {'numero', 'clave_estatal', 'clave_municipio', 'elevacion_msnm', 'recuento_curp_renapo'}
             date_fields = {'fecha_muestreo'}
             
+            # Definir límites de longitud para campos de texto críticos
+            text_field_limits = {
+                'tel_tecnico': 20,
+                'tel_productor': 20,
+                'correo_tecnico': 150,
+                'correo_productor': 150,
+                'nombre_tecnico': 150,
+                'nombre_productor': 150,
+                'estado_cuadernillo': 100,
+                'municipio_cuadernillo': 100,
+                'clave_munip': 10,
+                'clave_localidad': 10,
+                'localidad_cuadernillo': 100,
+                'extraccion_edo': 10,
+                'clave': 50,
+                'ddr': 100,
+                'cader': 100,
+                'coordenada_x': 50,
+                'coordenada_y': 50,
+                'profundidad_muestreo': 50,
+                'parcela': 100,
+                'cultivo_anterior': 100,
+                'cultivo_establecer': 100,
+                'manejo': 100,
+                'tipo_vegetacion': 100,
+                'muestra': 50,
+                'reemplazo': 50,
+                'nombre_revisor': 150,
+                'estatus': 20
+            }
+            
             records_to_insert = []
             municipios_not_found = set()
+            processing_errors = []
             
-            # Procesar por lotes para eficiencia de memoria
-            PROCESS_BATCH_SIZE = 1000
-            total_processed = 0
+            print(f"⚡ Procesando TODAS las {len(df)} filas del Excel...")
             
-            for batch_start in range(0, len(df), PROCESS_BATCH_SIZE):
-                batch_end = min(batch_start + PROCESS_BATCH_SIZE, len(df))
-                batch_df = df.iloc[batch_start:batch_end]
-                
-                print(f"  Procesando lote {batch_start + 1}-{batch_end} de {len(df)}...")
-                
-                for index, row in batch_df.iterrows():
-                    try:
-                        data = {}
+            # 6. Procesar TODAS las filas - SIN LÍMITES
+            skipped_rows = []
+            empty_rows = 0
+            progress_step = max(1, len(df) // 10)  # Mostrar progreso cada 10%
+            
+            for index, row in df.iterrows():
+                try:
+                    # Mostrar progreso cada cierto porcentaje
+                    if (index + 1) % progress_step == 0:
+                        progress_percent = ((index + 1) / len(df)) * 100
+                        print(f"  📊 Progreso: {index + 1}/{len(df)} filas ({progress_percent:.1f}%)")
+                    
+                    data = {}
+                    row_has_data = False
+                    
+                    # Verificar si la fila tiene ALGÚN dato
+                    row_completely_empty = not AnalisisSuelosService.check_row_has_any_data(row)
+                    
+                    if row_completely_empty:
+                        empty_rows += 1
+                        # Aún así, procesar la fila con datos mínimos
+                    
+                    # Mapear valores usando el diccionario de mapeo combinado
+                    for excel_col, db_field in combined_mapping.items():
+                        value = AnalisisSuelosService.safe_get_column_value(row, excel_col, df.columns.tolist())
                         
-                        # Mapear valores por posición (más rápido que por nombre)
-                        for pos, db_field in position_mapping.items():
-                            if pos < len(df.columns):
-                                value = row.iloc[pos] if pos < len(row) else None
-                                
-                                # Aplicar conversión según tipo de campo
-                                if db_field in int_fields:
-                                    data[db_field] = AnalisisSuelosService.process_int_fast(value)
-                                elif db_field in date_fields:
-                                    data[db_field] = AnalisisSuelosService.process_date_fast(value)
-                                else:
-                                    data[db_field] = AnalisisSuelosService.process_text_fast(value)
+                        # Solo procesar si encontramos el valor y el campo no está ya asignado
+                        if value is not None and (db_field not in data or data[db_field] is None):
+                            # Aplicar conversión según tipo de campo
+                            if db_field in int_fields:
+                                processed_value = AnalisisSuelosService.process_int_fast(value)
+                            elif db_field in date_fields:
+                                processed_value = AnalisisSuelosService.process_date_fast(value)
                             else:
-                                data[db_field] = None
-                        
-                        # VALIDACIÓN RÁPIDA DE MUNICIPIO
-                        municipio_nombre = data.get('municipio_cuadernillo')
-                        if municipio_nombre:
-                            municipio_id = AnalisisSuelosService.find_municipio_id_fast(municipio_nombre, municipios_cache)
-                            data['municipio_id_FK'] = municipio_id
-                            if not municipio_id:
-                                municipios_not_found.add(municipio_nombre)
-                        else:
-                            data['municipio_id_FK'] = None
-                        
-                        # Campos obligatorios
-                        data['user_id_FK'] = user_id
-                        data['estatus'] = 'pendiente'
-                        
-                        # Validar número
-                        if data.get('numero') is None:
-                            data['numero'] = index + 1
-                        
-                        records_to_insert.append(data)
-                        total_processed += 1
-                        
-                    except Exception as e:
-                        print(f"  ⚠️ Error procesando fila {index + 1}: {str(e)}")
+                                # Aplicar límite de longitud si existe
+                                max_length = text_field_limits.get(db_field)
+                                processed_value = AnalisisSuelosService.process_text_fast(value, max_length)
+                            
+                            data[db_field] = processed_value
+                            
+                            # Marcar que la fila tiene datos si encontramos algo válido
+                            if processed_value is not None:
+                                row_has_data = True
+                    
+                    # Validación de municipio - PERMITIR MUNICIPIOS NO ENCONTRADOS
+                    municipio_nombre = data.get('municipio_cuadernillo')
+                    if municipio_nombre:
+                        municipio_id = AnalisisSuelosService.find_municipio_id_fast(municipio_nombre, municipios_cache)
+                        data['municipio_id_FK'] = municipio_id
+                        if not municipio_id:
+                            municipios_not_found.add(str(municipio_nombre))
+                    else:
+                        data['municipio_id_FK'] = None
+                    
+                    # Campos obligatorios
+                    data['user_id_FK'] = user_id
+                    data['estatus'] = 'pendiente'
+                    
+                    # Validar número - SIEMPRE asignar
+                    if data.get('numero') is None:
+                        data['numero'] = index + 1
+                    
+                    # SIEMPRE agregar la fila al resultado
+                    records_to_insert.append(data)
+                    
+                except Exception as e:
+                    error_msg = f"Error procesando fila {index + 1}: {str(e)}"
+                    processing_errors.append(error_msg)
+                    
+                    # AÚN ASÍ, intentar crear un registro mínimo
+                    try:
+                        minimal_data = {
+                            'numero': index + 1,
+                            'user_id_FK': user_id,
+                            'estatus': 'pendiente',
+                            'municipio_id_FK': None
+                        }
+                        records_to_insert.append(minimal_data)
+                    except:
+                        skipped_rows.append(index + 1)
                         continue
-                
-                print(f"  ✓ Lote procesado: {len(batch_df)} filas")
             
-            # 5. INSERCIÓN MASIVA OPTIMIZADA
-            print(f"🚀 Insertando {len(records_to_insert)} registros...")
+            print(f"📊 ESTADÍSTICAS DE PROCESAMIENTO:")
+            print(f"  📋 Total de filas en Excel: {len(df)}")
+            print(f"  💾 Registros preparados para insertar: {len(records_to_insert)}")
+            print(f"  🗂️ Filas aparentemente vacías: {empty_rows}")
+            print(f"  ⚠️ Errores de procesamiento: {len(processing_errors)}")
+            print(f"  ❌ Filas completamente saltadas: {len(skipped_rows)}")
+            print(f"  🏘️ Municipios no encontrados: {len(municipios_not_found)}")
+            
+            # 7. Inserción masiva - PROCESANDO TODOS LOS REGISTROS
+            print(f"💾 Iniciando inserción de {len(records_to_insert)} registros en base de datos...")
             success_count, error_count, errors = AnalisisSuelosService.bulk_insert_optimized(records_to_insert, db)
             
-            # 6. ESTADÍSTICAS FINALES
+            # 8. Estadísticas finales
             end_time = datetime.now()
             processing_time = (end_time - start_time).total_seconds()
             
             print(f"🎉 PROCESAMIENTO COMPLETADO en {processing_time:.2f} segundos")
-            print(f"📊 Estadísticas: {success_count} exitosos, {error_count} errores")
-            if municipios_not_found:
-                print(f"⚠️  Municipios no encontrados: {len(municipios_not_found)}")
+            print(f"📈 Estadísticas finales: {success_count} exitosos, {error_count} errores")
             
-            # Crear mensaje de resumen
+            # Mensaje final mejorado
             message_parts = []
-            message_parts.append(f"Archivo procesado en {processing_time:.2f}s. {success_count} registros insertados.")
+            if success_count > 0:
+                message_parts.append(f"✅ Archivo procesado exitosamente en {processing_time:.2f}s.")
+                message_parts.append(f"💾 {success_count} de {len(records_to_insert)} registros insertados.")
+                
+                if success_count < len(records_to_insert):
+                    message_parts.append(f"⚠️ {len(records_to_insert) - success_count} registros tuvieron errores.")
+            else:
+                message_parts.append("❌ No se pudo insertar ningún registro.")
             
             if municipios_not_found:
-                message_parts.append(f"⚠️ {len(municipios_not_found)} municipios no encontrados.")
+                message_parts.append(f"🏘️ {len(municipios_not_found)} municipios no encontrados (registrados con municipio_id_FK=NULL).")
             
-            final_message = " ".join(message_parts) if success_count > 0 else "No se pudo procesar ningún registro"
+            final_message = " ".join(message_parts)
             
             return {
                 "message": final_message,
-                "records_processed": len(df),
-                "success_count": success_count,
-                "error_count": error_count,
+                "records_processed": len(df),  # Total de filas en el Excel
+                "success_count": success_count,  # Registros insertados exitosamente
+                "error_count": error_count + len(processing_errors),
                 "processing_time_seconds": round(processing_time, 2),
-                "errors": errors[:5],  # Solo mostrar primeros 5 errores
-                "municipios_not_found": list(municipios_not_found)[:10] if municipios_not_found else []
+                "errors": errors + processing_errors[:5],  # Solo los primeros 5 errores
+                "municipios_not_found": list(municipios_not_found) if municipios_not_found else []
             }
             
         except Exception as e:
             db.rollback()
-            print(f"💥 Error general procesando archivo: {str(e)}")
-            raise Exception(f"Error al procesar el archivo Excel: {str(e)}")
+            error_msg = f"💥 Error crítico procesando archivo: {str(e)}"
+            print(error_msg)
+            raise Exception(error_msg)
     
     @staticmethod
     def get_all_analisis_suelos(db: Session, skip: int = 0, limit: int = 100) -> List[AnalisisSuelosPendientes]:
-        """
-        Obtiene todos los análisis de suelos pendientes
-        """
+        """Obtiene todos los análisis de suelos pendientes"""
         return db.query(AnalisisSuelosPendientes).offset(skip).limit(limit).all()
     
     @staticmethod
     def get_analisis_suelos_by_id(db: Session, analisis_id: int) -> AnalisisSuelosPendientes:
-        """
-        Obtiene un análisis de suelos por ID
-        """
+        """Obtiene un análisis de suelos por ID"""
         return db.query(AnalisisSuelosPendientes).filter(AnalisisSuelosPendientes.id == analisis_id).first()
     
     @staticmethod
     def create_analisis_suelos(db: Session, analisis_data: AnalisisSuelosCreate) -> AnalisisSuelosPendientes:
-        """
-        Crea un nuevo análisis de suelos
-        """
+        """Crea un nuevo análisis de suelos"""
         db_analisis = AnalisisSuelosPendientes(**analisis_data.dict())
         db.add(db_analisis)
         db.commit()
@@ -376,9 +551,7 @@ class AnalisisSuelosService:
     
     @staticmethod
     def delete_analisis_suelos(db: Session, analisis_id: int) -> bool:
-        """
-        Elimina un análisis de suelos por ID
-        """
+        """Elimina un análisis de suelos por ID"""
         analisis = db.query(AnalisisSuelosPendientes).filter(AnalisisSuelosPendientes.id == analisis_id).first()
         if analisis:
             db.delete(analisis)

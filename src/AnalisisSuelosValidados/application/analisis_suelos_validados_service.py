@@ -136,3 +136,115 @@ class AnalisisSuelosValidadosService:
             "total_validados": total,
             "por_municipio": [{"municipio": m[0], "total": m[1]} for m in por_municipio]
         }
+
+    # NUEVOS MÉTODOS PARA ANÁLISIS PENDIENTES
+    
+    def obtener_todos_pendientes(self) -> List[dict]:
+        """Obtiene todos los análisis pendientes de todos los usuarios"""
+        try:
+            # Hacer join entre análisis pendientes y usuarios
+            resultados = (
+                self.db.query(AnalisisSuelosPendientes, Users)
+                .join(Users, AnalisisSuelosPendientes.user_id_FK == Users.ID_user)
+                .all()
+            )
+            
+            return [
+                {
+                    "analisis": analisis,
+                    "usuario": usuario
+                }
+                for analisis, usuario in resultados
+            ]
+        except Exception as e:
+            print(f"Error al obtener análisis pendientes: {str(e)}")
+            return []
+
+    def obtener_pendientes_por_correo(self, correo_usuario: str) -> List[dict]:
+        """Obtiene análisis pendientes de un usuario específico por correo"""
+        try:
+            # Buscar usuario por correo
+            usuario = self.db.query(Users).filter(Users.correo == correo_usuario).first()
+            if not usuario:
+                return []
+            
+            # Obtener análisis pendientes del usuario
+            analisis_pendientes = (
+                self.db.query(AnalisisSuelosPendientes)
+                .filter(AnalisisSuelosPendientes.user_id_FK == usuario.ID_user)
+                .all()
+            )
+            
+            return [
+                {
+                    "analisis": analisis,
+                    "usuario": usuario
+                }
+                for analisis in analisis_pendientes
+            ]
+        except Exception as e:
+            print(f"Error al obtener análisis pendientes por correo: {str(e)}")
+            return []
+
+    def contar_pendientes_por_usuario(self) -> List[dict]:
+        """Obtiene el conteo de análisis pendientes agrupados por usuario"""
+        try:
+            resultados = (
+                self.db.query(
+                    Users.correo,
+                    Users.nombre,
+                    Users.apellido,
+                    func.count(AnalisisSuelosPendientes.id).label('total_pendientes')
+                )
+                .join(AnalisisSuelosPendientes, Users.ID_user == AnalisisSuelosPendientes.user_id_FK)
+                .group_by(Users.correo, Users.nombre, Users.apellido)
+                .having(func.count(AnalisisSuelosPendientes.id) > 0)
+                .all()
+            )
+            
+            return [
+                {
+                    "correo": resultado.correo,
+                    "nombre": resultado.nombre,
+                    "apellido": resultado.apellido,
+                    "total_pendientes": resultado.total_pendientes
+                }
+                for resultado in resultados
+            ]
+        except Exception as e:
+            print(f"Error al contar pendientes por usuario: {str(e)}")
+            return []
+
+    def obtener_estadisticas_pendientes(self) -> dict:
+        """Obtiene estadísticas generales de análisis pendientes"""
+        try:
+            total_pendientes = self.db.query(AnalisisSuelosPendientes).count()
+            
+            # Pendientes por municipio
+            por_municipio = (
+                self.db.query(
+                    AnalisisSuelosPendientes.municipio_cuadernillo,
+                    func.count(AnalisisSuelosPendientes.id).label('total')
+                )
+                .group_by(AnalisisSuelosPendientes.municipio_cuadernillo)
+                .all()
+            )
+            
+            # Usuarios con pendientes
+            usuarios_con_pendientes = (
+                self.db.query(func.count(func.distinct(AnalisisSuelosPendientes.user_id_FK)))
+                .scalar()
+            )
+            
+            return {
+                "total_pendientes": total_pendientes,
+                "usuarios_con_pendientes": usuarios_con_pendientes,
+                "por_municipio": [{"municipio": m[0], "total": m[1]} for m in por_municipio]
+            }
+        except Exception as e:
+            print(f"Error al obtener estadísticas de pendientes: {str(e)}")
+            return {
+                "total_pendientes": 0,
+                "usuarios_con_pendientes": 0,
+                "por_municipio": []
+            }
