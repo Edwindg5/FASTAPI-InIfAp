@@ -59,3 +59,22 @@ class UploadResponse(BaseModel):
     processing_time_seconds: float = 0.0  
     errors: List[str] = []
     municipios_not_found: List[str] = []
+    
+    
+class UsuarioConPendientesResponse(BaseModel):
+    """Schema para mostrar usuarios con análisis pendientes"""
+    user_id: int
+    nombre_usuario: Optional[str] = None
+    apellido_usuario: Optional[str] = None
+    correo_usuario: Optional[str] = None
+    total_pendientes: int
+    ultimo_analisis_fecha: Optional[datetime] = None
+    municipios_involucrados: List[str] = []
+    
+    class Config:
+        from_attributes = True
+
+class ResumenUsuariosPendientesResponse(BaseModel):
+    """Schema para el resumen completo de usuarios con pendientes"""
+    total_usuarios_con_pendientes: int
+    usuarios: List[UsuarioConPendientesResponse]

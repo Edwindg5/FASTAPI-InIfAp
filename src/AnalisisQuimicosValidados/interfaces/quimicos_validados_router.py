@@ -1,17 +1,25 @@
 # src/AnalisisQuimicosValidados/interfaces/quimicos_validados_router.py
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import List, Optional
 import traceback
 
 from src.core.database import get_db
+from src.Users.infrastructure.users_model import Users
 from src.AnalisisQuimicosValidados.application.quimicos_validados_service import (
     obtener_analisis_pendientes_por_usuario,
     obtener_todos_usuarios_con_pendientes,
     validar_analisis_quimicos,
     obtener_analisis_validados_por_usuario,
-    validar_analisis_por_correo_usuario,  # NUEVA FUNCIÓN
+    validar_analisis_por_correo_usuario,
+)
+from src.AnalisisQuimicosValidados.application.excel_export_service import (
+    generar_excel_pendientes_por_usuario,
+    obtener_nombre_archivo_excel,
+    validar_usuario_existe,
+    contar_pendientes_usuario
 )
 
 router = APIRouter(prefix="/analisis-quimicos-validados", tags=["Análisis Químicos Validados"])
@@ -53,10 +61,8 @@ def obtener_usuarios_con_pendientes(db: Session = Depends(get_db)):
         print(f"✗ Error: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Error al validar análisis del usuario: {str(e)}"
+            detail=f"Error al obtener usuarios con pendientes: {str(e)}"
         )
-
-
 
 
 @router.get("/usuario/{correo_usuario}/pendientes/")
@@ -91,6 +97,130 @@ def obtener_pendientes_por_usuario(
         raise HTTPException(
             status_code=500,
             detail=f"Error al obtener análisis pendientes: {str(e)}"
+        )
+
+
+@router.get("/usuario/{correo_usuario}/pendientes/excel/")
+def descargar_pendientes_excel(
+    correo_usuario: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Descarga todos los análisis químicos pendientes de un usuario en formato Excel.
+    
+    Args:
+        correo_usuario: Correo electrónico del usuario
+        
+    Returns:
+        StreamingResponse: Archivo Excel para descarga
+    """
+    try:
+        print(f"=== DESCARGA EXCEL PENDIENTES PARA: {correo_usuario} ===")
+        
+        # Validar que el usuario existe
+        if not validar_usuario_existe(correo_usuario, db):
+            raise HTTPException(
+                status_code=404,
+                detail=f"Usuario con correo '{correo_usuario}' no encontrado"
+            )
+        
+        # Contar análisis pendientes
+        total_pendientes = contar_pendientes_usuario(correo_usuario, db)
+        if total_pendientes == 0:
+            raise HTTPException(
+                status_code=404,
+                detail=f"El usuario '{correo_usuario}' no tiene análisis pendientes"
+            )
+        
+        print(f"✓ Usuario encontrado con {total_pendientes} análisis pendientes")
+        
+        # Generar archivo Excel
+        buffer_excel = generar_excel_pendientes_por_usuario(correo_usuario, db)
+        
+        if buffer_excel is None:
+            raise HTTPException(
+                status_code=500,
+                detail="Error al generar el archivo Excel"
+            )
+        
+        # Generar nombre del archivo
+        nombre_archivo = obtener_nombre_archivo_excel(correo_usuario)
+        
+        print(f"✅ Archivo Excel generado: {nombre_archivo}")
+        
+        # Retornar como descarga
+        return StreamingResponse(
+            io=buffer_excel,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f"attachment; filename={nombre_archivo}"
+            }
+        )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error crítico: {e}")
+        print(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al generar Excel: {str(e)}"
+        )
+
+
+@router.get("/usuario/{correo_usuario}/pendientes/info/")
+def obtener_info_pendientes(
+    correo_usuario: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Obtiene información básica sobre los análisis pendientes de un usuario
+    sin generar el archivo Excel.
+    
+    Args:
+        correo_usuario: Correo electrónico del usuario
+        
+    Returns:
+        dict: Información sobre los pendientes
+    """
+    try:
+        print(f"=== INFO PENDIENTES PARA: {correo_usuario} ===")
+        
+        # Validar que el usuario existe
+        if not validar_usuario_existe(correo_usuario, db):
+            raise HTTPException(
+                status_code=404,
+                detail=f"Usuario con correo '{correo_usuario}' no encontrado"
+            )
+        
+        # Contar análisis pendientes
+        total_pendientes = contar_pendientes_usuario(correo_usuario, db)
+        
+        # Obtener información del usuario
+        usuario = db.query(Users).filter(
+            Users.correo == correo_usuario.strip().lower()
+        ).first()
+        
+        nombre_completo = f"{usuario.nombre or ''} {usuario.apellido or ''}".strip()
+        if not nombre_completo:
+            nombre_completo = "Sin nombre"
+        
+        return {
+            "success": True,
+            "correo_usuario": correo_usuario,
+            "nombre_usuario": nombre_completo,
+            "total_pendientes": total_pendientes,
+            "tiene_pendientes": total_pendientes > 0,
+            "nombre_archivo_excel": obtener_nombre_archivo_excel(correo_usuario) if total_pendientes > 0 else None
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al obtener información: {str(e)}"
         )
 
 
@@ -166,8 +296,6 @@ def obtener_validados_por_usuario(
         )
 
 
-
-
 @router.post("/validar-simple/{correo_usuario}/")
 def validar_usuario_simple(
     correo_usuario: str,
@@ -215,6 +343,3 @@ def validar_usuario_simple(
             status_code=500,
             detail=f"Error al validar análisis del usuario: {str(e)}"
         )
-    
-    except HTTPException:
-        raise

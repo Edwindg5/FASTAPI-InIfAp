@@ -455,7 +455,7 @@ class AnalisisSuelosService:
                     data['user_id_FK'] = user_id
                     data['estatus'] = 'pendiente'
                     
-                    # Validar número - SIEMPRE asignar
+                    # Validar número - SIEMPRE asigna
                     if data.get('numero') is None:
                         data['numero'] = index + 1
                     
@@ -558,3 +558,137 @@ class AnalisisSuelosService:
             db.commit()
             return True
         return False
+    @staticmethod
+    def get_analisis_suelos_pendientes_by_user(
+        db: Session, 
+        user_id: int, 
+        skip: int = 0, 
+        limit: int = 100
+    ) -> List[AnalisisSuelosPendientes]:
+        """
+        Obtiene solo los análisis de suelos PENDIENTES de un usuario específico
+        """
+        return db.query(AnalisisSuelosPendientes).filter(
+            AnalisisSuelosPendientes.user_id_FK == user_id,
+            AnalisisSuelosPendientes.estatus == 'pendiente'
+        ).offset(skip).limit(limit).all()
+    
+    @staticmethod
+    def count_analisis_suelos_pendientes_by_user(db: Session, user_id: int) -> int:
+        """
+        Cuenta el número total de análisis de suelos pendientes de un usuario específico
+        """
+        return db.query(AnalisisSuelosPendientes).filter(
+            AnalisisSuelosPendientes.user_id_FK == user_id,
+            AnalisisSuelosPendientes.estatus == 'pendiente'
+        ).count()
+    
+    @staticmethod
+    def get_all_analisis_by_user(
+        db: Session, 
+        user_id: int, 
+        skip: int = 0, 
+        limit: int = 100
+    ) -> List[AnalisisSuelosPendientes]:
+        """
+        Obtiene TODOS los análisis de suelos de un usuario específico (cualquier estatus)
+        """
+        return db.query(AnalisisSuelosPendientes).filter(
+            AnalisisSuelosPendientes.user_id_FK == user_id
+        ).offset(skip).limit(limit).all()
+    
+    @staticmethod
+    def get_analisis_by_user_and_status(
+        db: Session, 
+        user_id: int, 
+        estatus: str, 
+        skip: int = 0, 
+        limit: int = 100
+    ) -> List[AnalisisSuelosPendientes]:
+        """
+        Obtiene análisis de suelos de un usuario específico filtrados por estatus
+        """
+        return db.query(AnalisisSuelosPendientes).filter(
+            AnalisisSuelosPendientes.user_id_FK == user_id,
+            AnalisisSuelosPendientes.estatus == estatus
+        ).offset(skip).limit(limit).all()
+    
+    @staticmethod
+    def update_estatus_analisis(db: Session, analisis_id: int, nuevo_estatus: str) -> AnalisisSuelosPendientes:
+        """
+        Actualiza el estatus de un análisis de suelos específico
+        """
+        analisis = db.query(AnalisisSuelosPendientes).filter(
+            AnalisisSuelosPendientes.id == analisis_id
+        ).first()
+        
+        if analisis:
+            analisis.estatus = nuevo_estatus
+            db.commit()
+            db.refresh(analisis)
+        
+        return analisis
+    
+    @staticmethod
+    def get_usuarios_con_analisis_pendientes(
+        db: Session, 
+        skip: int = 0, 
+        limit: int = 100
+    ) -> List[Dict[str, Any]]:
+        """
+        Obtiene todos los usuarios que tienen análisis de suelos pendientes
+        con información resumida de cada usuario
+        """
+        from src.Users.infrastructure.users_model import Users
+        from src.municipios.infrastructure.municipios_model import Municipios
+        from sqlalchemy import func, distinct
+        
+        # Consulta para obtener usuarios con análisis pendientes y su información
+        query = db.query(
+            AnalisisSuelosPendientes.user_id_FK.label('user_id'),
+            Users.nombre.label('nombre_usuario'),
+            Users.apellido.label('apellido_usuario'), 
+            Users.correo.label('correo_usuario'),
+            func.count(AnalisisSuelosPendientes.id).label('total_pendientes'),
+            func.max(AnalisisSuelosPendientes.fecha_creacion).label('ultimo_analisis_fecha')
+        ).join(
+            Users, AnalisisSuelosPendientes.user_id_FK == Users.ID_user, isouter=True
+        ).filter(
+            AnalisisSuelosPendientes.estatus == 'pendiente'
+        ).group_by(
+            AnalisisSuelosPendientes.user_id_FK,
+            Users.nombre,
+            Users.apellido,
+            Users.correo
+        ).offset(skip).limit(limit)
+        
+        resultados = query.all()
+        
+        usuarios_con_pendientes = []
+        
+        for resultado in resultados:
+            # Obtener municipios involucrados para este usuario
+            municipios_query = db.query(distinct(Municipios.nombre)).join(
+                AnalisisSuelosPendientes, 
+                Municipios.id_municipio == AnalisisSuelosPendientes.municipio_id_FK
+            ).filter(
+                AnalisisSuelosPendientes.user_id_FK == resultado.user_id,
+                AnalisisSuelosPendientes.estatus == 'pendiente',
+                Municipios.nombre.isnot(None)
+            ).all()
+            
+            municipios_nombres = [m[0] for m in municipios_query if m[0]]
+            
+            usuario_data = {
+                'user_id': resultado.user_id,
+                'nombre_usuario': resultado.nombre_usuario,
+                'apellido_usuario': resultado.apellido_usuario,
+                'correo_usuario': resultado.correo_usuario,
+                'total_pendientes': resultado.total_pendientes,
+                'ultimo_analisis_fecha': resultado.ultimo_analisis_fecha,
+                'municipios_involucrados': municipios_nombres
+            }
+            
+            usuarios_con_pendientes.append(usuario_data)
+        
+        return usuarios_con_pendientes
