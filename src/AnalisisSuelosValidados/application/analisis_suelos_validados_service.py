@@ -1,7 +1,7 @@
 # src/AnalisisSuelosValidados/application/analisis_suelos_validados_service.py
-from typing import List, Optional
+from typing import List, Optional, Generator, Dict, Any
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, and_
 from src.AnalisisSuelosValidados.infrastructure.analisis_suelos_validados_model import AnalisisSuelosValidados
 from src.AnalisisSuelosPendientes.infrastructure.analisis_suelos_model import AnalisisSuelosPendientes
 from src.Users.infrastructure.users_model import Users
@@ -101,150 +101,124 @@ class AnalisisSuelosValidadosService:
             self.db.rollback()
             return {"success": False, "message": f"Error al validar análisis: {str(e)}"}
 
-    def obtener_todos_validados(self) -> List[AnalisisSuelosValidados]:
-        """Obtiene todos los análisis de suelos validados"""
-        return self.db.query(AnalisisSuelosValidados).all()
-
-    def obtener_validados_por_correo(self, correo_usuario: str) -> List[AnalisisSuelosValidados]:
-        """Obtiene análisis validados por correo de usuario"""
-        # Buscar usuario por correo
-        usuario = self.db.query(Users).filter(Users.correo == correo_usuario).first()
-        if not usuario:
-            return []
-        
-        return (
-            self.db.query(AnalisisSuelosValidados)
-            .filter(AnalisisSuelosValidados.user_id_FK == usuario.ID_user)
-            .all()
-        )
-
-    def obtener_estadisticas_validados(self) -> dict:
-        """Obtiene estadísticas de los análisis validados"""
-        total = self.db.query(AnalisisSuelosValidados).count()
-        
-        # Análisis por municipio
-        por_municipio = (
-            self.db.query(
-                AnalisisSuelosValidados.municipio_cuadernillo,
-                func.count(AnalisisSuelosValidados.id).label('total')
-            )
-            .group_by(AnalisisSuelosValidados.municipio_cuadernillo)
-            .all()
-        )
-        
-        return {
-            "total_validados": total,
-            "por_municipio": [{"municipio": m[0], "total": m[1]} for m in por_municipio]
-        }
-
-    # NUEVOS MÉTODOS PARA ANÁLISIS PENDIENTES
-    
-    def obtener_todos_pendientes(self) -> List[dict]:
-        """Obtiene todos los análisis pendientes de todos los usuarios"""
-        try:
-            # Hacer join entre análisis pendientes y usuarios
-            resultados = (
-                self.db.query(AnalisisSuelosPendientes, Users)
-                .join(Users, AnalisisSuelosPendientes.user_id_FK == Users.ID_user)
-                .all()
-            )
-            
-            return [
-                {
-                    "analisis": analisis,
-                    "usuario": usuario
-                }
-                for analisis, usuario in resultados
-            ]
-        except Exception as e:
-            print(f"Error al obtener análisis pendientes: {str(e)}")
-            return []
-
-    def obtener_pendientes_por_correo(self, correo_usuario: str) -> List[dict]:
-        """Obtiene análisis pendientes de un usuario específico por correo"""
+    def obtener_pendientes_detallados_por_correo(self, correo_usuario: str) -> dict:
+        """
+        Obtiene todos los análisis pendientes de un usuario específico con información detallada.
+        Optimizado para exportación y visualización completa.
+        """
         try:
             # Buscar usuario por correo
             usuario = self.db.query(Users).filter(Users.correo == correo_usuario).first()
             if not usuario:
-                return []
+                return {
+                    "success": False,
+                    "message": "Usuario no encontrado",
+                    "total_registros": 0,
+                    "datos": []
+                }
             
-            # Obtener análisis pendientes del usuario
+            # Obtener TODOS los análisis pendientes del usuario
             analisis_pendientes = (
                 self.db.query(AnalisisSuelosPendientes)
                 .filter(AnalisisSuelosPendientes.user_id_FK == usuario.ID_user)
+                .order_by(AnalisisSuelosPendientes.fecha_creacion.desc())
                 .all()
             )
             
-            return [
-                {
-                    "analisis": analisis,
-                    "usuario": usuario
+            if not analisis_pendientes:
+                return {
+                    "success": False,
+                    "message": "No hay análisis pendientes para este usuario",
+                    "total_registros": 0,
+                    "usuario_info": {
+                        "id": usuario.ID_user,
+                        "correo": usuario.correo,
+                        "nombre": usuario.nombre,
+                        "apellido": usuario.apellido
+                    },
+                    "datos": []
                 }
-                for analisis in analisis_pendientes
-            ]
-        except Exception as e:
-            print(f"Error al obtener análisis pendientes por correo: {str(e)}")
-            return []
-
-    def contar_pendientes_por_usuario(self) -> List[dict]:
-        """Obtiene el conteo de análisis pendientes agrupados por usuario"""
-        try:
-            resultados = (
-                self.db.query(
-                    Users.correo,
-                    Users.nombre,
-                    Users.apellido,
-                    func.count(AnalisisSuelosPendientes.id).label('total_pendientes')
-                )
-                .join(AnalisisSuelosPendientes, Users.ID_user == AnalisisSuelosPendientes.user_id_FK)
-                .group_by(Users.correo, Users.nombre, Users.apellido)
-                .having(func.count(AnalisisSuelosPendientes.id) > 0)
-                .all()
-            )
             
-            return [
-                {
-                    "correo": resultado.correo,
-                    "nombre": resultado.nombre,
-                    "apellido": resultado.apellido,
-                    "total_pendientes": resultado.total_pendientes
+            # Procesar todos los datos con manejo seguro de valores None
+            datos_procesados = []
+            for i, analisis in enumerate(analisis_pendientes, 1):
+                dato = {
+                    # Información básica
+                    "numero_registro": i,
+                    "id": getattr(analisis, 'id', None),
+                    "user_id": usuario.ID_user,
+                    
+                    # Información geográfica
+                    "municipio_id_FK": getattr(analisis, 'municipio_id_FK', None),
+                    "municipio_cuadernillo": getattr(analisis, 'municipio_cuadernillo', ''),
+                    "localidad_cuadernillo": getattr(analisis, 'localidad_cuadernillo', ''),
+                    "clave_municipio": getattr(analisis, 'clave_municipio', None),
+                    "clave_munip": getattr(analisis, 'clave_munip', ''),
+                    "clave_localidad": getattr(analisis, 'clave_localidad', ''),
+                    "estado_cuadernillo": getattr(analisis, 'estado_cuadernillo', ''),
+                    
+                    # Coordenadas y ubicación
+                    "coordenada_x": getattr(analisis, 'coordenada_x', ''),
+                    "coordenada_y": getattr(analisis, 'coordenada_y', ''),
+                    "elevacion_msnm": getattr(analisis, 'elevacion_msnm', None),
+                    
+                    # Información del productor
+                    "nombre_productor": getattr(analisis, 'nombre_productor', ''),
+                    "tel_productor": getattr(analisis, 'tel_productor', ''),
+                    "correo_productor": getattr(analisis, 'correo_productor', ''),
+                    
+                    # Información del técnico
+                    "nombre_tecnico": getattr(analisis, 'nombre_tecnico', ''),
+                    "tel_tecnico": getattr(analisis, 'tel_tecnico', ''),
+                    "correo_tecnico": getattr(analisis, 'correo_tecnico', ''),
+                    
+                    # Información agrícola
+                    "cultivo_anterior": getattr(analisis, 'cultivo_anterior', ''),
+                    "cultivo_establecer": getattr(analisis, 'cultivo_establecer', ''),
+                    "manejo": getattr(analisis, 'manejo', ''),
+                    "tipo_vegetacion": getattr(analisis, 'tipo_vegetacion', ''),
+                    "parcela": getattr(analisis, 'parcela', ''),
+                    
+                    # Información de muestreo
+                    "profundidad_muestreo": getattr(analisis, 'profundidad_muestreo', ''),
+                    "fecha_muestreo": str(analisis.fecha_muestreo) if getattr(analisis, 'fecha_muestreo', None) else '',
+                    "muestra": getattr(analisis, 'muestra', ''),
+                    "reemplazo": getattr(analisis, 'reemplazo', ''),
+                    
+                    # Información administrativa
+                    "numero": getattr(analisis, 'numero', None),
+                    "clave_estatal": getattr(analisis, 'clave_estatal', None),
+                    "recuento_curp_renapo": getattr(analisis, 'recuento_curp_renapo', None),
+                    "extraccion_edo": getattr(analisis, 'extraccion_edo', ''),
+                    "clave": getattr(analisis, 'clave', ''),
+                    "ddr": getattr(analisis, 'ddr', ''),
+                    "cader": getattr(analisis, 'cader', ''),
+                    "nombre_revisor": getattr(analisis, 'nombre_revisor', ''),
+                    
+                    # Fechas
+                    "fecha_creacion": str(analisis.fecha_creacion) if getattr(analisis, 'fecha_creacion', None) else '',
                 }
-                for resultado in resultados
-            ]
-        except Exception as e:
-            print(f"Error al contar pendientes por usuario: {str(e)}")
-            return []
-
-    def obtener_estadisticas_pendientes(self) -> dict:
-        """Obtiene estadísticas generales de análisis pendientes"""
-        try:
-            total_pendientes = self.db.query(AnalisisSuelosPendientes).count()
-            
-            # Pendientes por municipio
-            por_municipio = (
-                self.db.query(
-                    AnalisisSuelosPendientes.municipio_cuadernillo,
-                    func.count(AnalisisSuelosPendientes.id).label('total')
-                )
-                .group_by(AnalisisSuelosPendientes.municipio_cuadernillo)
-                .all()
-            )
-            
-            # Usuarios con pendientes
-            usuarios_con_pendientes = (
-                self.db.query(func.count(func.distinct(AnalisisSuelosPendientes.user_id_FK)))
-                .scalar()
-            )
+                
+                datos_procesados.append(dato)
             
             return {
-                "total_pendientes": total_pendientes,
-                "usuarios_con_pendientes": usuarios_con_pendientes,
-                "por_municipio": [{"municipio": m[0], "total": m[1]} for m in por_municipio]
+                "success": True,
+                "message": f"Se encontraron {len(analisis_pendientes)} análisis pendientes",
+                "total_registros": len(analisis_pendientes),
+                "usuario_info": {
+                    "id": usuario.ID_user,
+                    "correo": usuario.correo,
+                    "nombre": usuario.nombre or '',
+                    "apellido": usuario.apellido or ''
+                },
+                "datos": datos_procesados
             }
+            
         except Exception as e:
-            print(f"Error al obtener estadísticas de pendientes: {str(e)}")
+            print(f"Error al obtener análisis pendientes detallados: {str(e)}")
             return {
-                "total_pendientes": 0,
-                "usuarios_con_pendientes": 0,
-                "por_municipio": []
+                "success": False,
+                "message": f"Error al obtener datos: {str(e)}",
+                "total_registros": 0,
+                "datos": []
             }
