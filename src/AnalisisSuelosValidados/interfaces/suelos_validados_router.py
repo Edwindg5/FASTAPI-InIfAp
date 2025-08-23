@@ -207,49 +207,7 @@ def exportar_todos_pendientes_excel(
             detail=f"Error interno del servidor: {str(e)}"
         )
 
-# ENDPOINT 4: Obtener vista previa de todos los análisis pendientes (opcional)
-@router.get("/pendientes/todos", response_model=TodosAnalisisPendientesResponse)
-def obtener_todos_pendientes(
-    db: Session = Depends(get_db),
-    limite: int = 100
-):
-    """
-    Obtiene todos los análisis pendientes de todos los usuarios.
-    Útil para vista previa antes de exportar a Excel.
-    
-    Args:
-        limite: Número máximo de registros a devolver (por defecto 100)
-    """
-    try:
-        service = AnalisisSuelosValidadosService(db)
-        resultado = service.obtener_todos_los_pendientes_detallados()
-        
-        if not resultado["success"]:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=resultado["message"]
-            )
-        
-        # Limitar los datos si es necesario
-        datos_limitados = resultado["datos"][:limite] if limite > 0 else resultado["datos"]
-        
-        return TodosAnalisisPendientesResponse(
-            success=resultado["success"],
-            message=resultado["message"],
-            total_registros=resultado["total_registros"],
-            total_usuarios=resultado["total_usuarios"],
-            usuarios_con_pendientes=resultado.get("usuarios_con_pendientes", []),
-            datos=datos_limitados
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error interno del servidor: {str(e)}"
-        )
-        
+     
 class AnalisisValidadosResponse(BaseModel):
     success: bool
     message: str = None
@@ -265,75 +223,7 @@ class TodosAnalisisValidadosResponse(BaseModel):
     usuarios_con_validados: List[str] = []
     datos: List[dict] = []
 
-# ENDPOINT 5: Exportar análisis validados de un usuario a Excel
-@router.get("/validados/exportar-excel/{correo_usuario}")
-def exportar_validados_excel(
-    correo_usuario: str,
-    db: Session = Depends(get_db)
-):
-    """
-    Exporta todos los análisis validados de un usuario específico a un archivo Excel.
-    """
-    try:
-        # Obtener datos del servicio
-        service = AnalisisSuelosValidadosService(db)
-        resultado = service.obtener_validados_detallados_por_correo(correo_usuario)
-        
-        if not resultado["success"]:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=resultado["message"]
-            )
-        
-        # Crear el archivo Excel
-        excel_service = ExcelExportValidadosService()
-        excel_buffer = excel_service.exportar_validados_a_excel(
-            datos=resultado["datos"],
-            usuario_info=resultado.get("usuario_info", {}),
-            correo_usuario=correo_usuario
-        )
-        
-        if not excel_buffer:
-            # Si falla la exportación completa, intentar con versión simple
-            try:
-                excel_buffer = excel_service.crear_excel_simple(
-                    datos=resultado["datos"]
-                )
-            except Exception as simple_error:
-                print(f"Error también en Excel simple de validados: {str(simple_error)}")
-                
-            if not excel_buffer:
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Error al generar el archivo Excel"
-                )
-        
-        # Configurar respuesta de descarga
-        excel_buffer.seek(0)
-        
-        # Nombre del archivo con información del usuario
-        usuario_info = resultado.get("usuario_info", {})
-        nombre_usuario = usuario_info.get("nombre", "Usuario")
-        apellido_usuario = usuario_info.get("apellido", "")
-        nombre_archivo = f"Analisis_Validados_{nombre_usuario}_{apellido_usuario}_{correo_usuario.replace('@', '_').replace('.', '_')}.xlsx"
-        
-        response = StreamingResponse(
-            io.BytesIO(excel_buffer.read()),
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={
-                "Content-Disposition": f"attachment; filename={nombre_archivo}"
-            }
-        )
-        
-        return response
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error interno del servidor: {str(e)}"
-        )
+
 
 
 # ENDPOINT 6: Exportar TODOS los análisis validados de TODOS los usuarios a Excel
@@ -404,49 +294,6 @@ def exportar_todos_validados_excel(
             detail=f"Error interno del servidor: {str(e)}"
         )
 
-# ENDPOINT 7: Obtener vista previa de análisis validados de un usuario (opcional)
-@router.get("/validados/{correo_usuario}", response_model=AnalisisValidadosResponse)
-def obtener_validados_por_usuario(
-    correo_usuario: str,
-    db: Session = Depends(get_db),
-    limite: int = 100
-):
-    """
-    Obtiene todos los análisis validados de un usuario específico.
-    Útil para vista previa antes de exportar a Excel.
-    
-    Args:
-        correo_usuario: Correo del usuario
-        limite: Número máximo de registros a devolver (por defecto 100)
-    """
-    try:
-        service = AnalisisSuelosValidadosService(db)
-        resultado = service.obtener_validados_detallados_por_correo(correo_usuario)
-        
-        if not resultado["success"]:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=resultado["message"]
-            )
-        
-        # Limitar los datos si es necesario
-        datos_limitados = resultado["datos"][:limite] if limite > 0 else resultado["datos"]
-        
-        return AnalisisValidadosResponse(
-            success=resultado["success"],
-            message=resultado["message"],
-            total_registros=resultado["total_registros"],
-            usuario_info=resultado.get("usuario_info"),
-            datos=datos_limitados
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error interno del servidor: {str(e)}"
-        )
 
 # ENDPOINT 8: Obtener vista previa de todos los análisis validados (opcional)
 @router.get("/validados", response_model=TodosAnalisisValidadosResponse)

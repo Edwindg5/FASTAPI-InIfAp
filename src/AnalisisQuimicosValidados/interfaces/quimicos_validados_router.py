@@ -168,61 +168,6 @@ def descargar_pendientes_excel(
         )
 
 
-@router.get("/usuario/{correo_usuario}/pendientes/info/")
-def obtener_info_pendientes(
-    correo_usuario: str,
-    db: Session = Depends(get_db)
-):
-    """
-    Obtiene información básica sobre los análisis pendientes de un usuario
-    sin generar el archivo Excel.
-    
-    Args:
-        correo_usuario: Correo electrónico del usuario
-        
-    Returns:
-        dict: Información sobre los pendientes
-    """
-    try:
-        print(f"=== INFO PENDIENTES PARA: {correo_usuario} ===")
-        
-        # Validar que el usuario existe
-        if not validar_usuario_existe(correo_usuario, db):
-            raise HTTPException(
-                status_code=404,
-                detail=f"Usuario con correo '{correo_usuario}' no encontrado"
-            )
-        
-        # Contar análisis pendientes
-        total_pendientes = contar_pendientes_usuario(correo_usuario, db)
-        
-        # Obtener información del usuario
-        usuario = db.query(Users).filter(
-            Users.correo == correo_usuario.strip().lower()
-        ).first()
-        
-        nombre_completo = f"{usuario.nombre or ''} {usuario.apellido or ''}".strip()
-        if not nombre_completo:
-            nombre_completo = "Sin nombre"
-        
-        return {
-            "success": True,
-            "correo_usuario": correo_usuario,
-            "nombre_usuario": nombre_completo,
-            "total_pendientes": total_pendientes,
-            "tiene_pendientes": total_pendientes > 0,
-            "nombre_archivo_excel": obtener_nombre_archivo_excel(correo_usuario) if total_pendientes > 0 else None
-        }
-    
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"❌ Error: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error al obtener información: {str(e)}"
-        )
-
 
 @router.post("/validar/")
 def validar_analisis(
@@ -260,40 +205,6 @@ def validar_analisis(
         )
 
 
-@router.get("/usuario/{correo_usuario}/validados/")
-def obtener_validados_por_usuario(
-    correo_usuario: str,
-    db: Session = Depends(get_db),
-    limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0)
-):
-    """
-    Obtiene los análisis químicos validados de un usuario específico.
-    """
-    try:
-        resultado = obtener_analisis_validados_por_usuario(
-            correo_usuario, db, limit, offset
-        )
-        
-        if resultado is None:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Usuario con correo '{correo_usuario}' no encontrado"
-            )
-        
-        return {
-            "success": True,
-            **resultado
-        }
-    
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"✗ Error: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error al obtener análisis validados: {str(e)}"
-        )
 
 
 @router.post("/validar-simple/{correo_usuario}/")
