@@ -8,6 +8,7 @@ from src.core.database import get_db
 from src.AnalisisSuelosValidados.application.analisis_suelos_validados_service import AnalisisSuelosValidadosService
 from src.AnalisisSuelosValidados.infrastructure.excel_export_service import ExcelExportService
 import io
+from datetime import datetime
 
 router = APIRouter(
     prefix="/api/v1/suelos-validados",
@@ -29,6 +30,14 @@ class AnalisisPendienteResponse(BaseModel):
     message: str = None
     total_registros: int
     usuario_info: dict = None
+    datos: List[dict] = []
+
+class TodosAnalisisPendientesResponse(BaseModel):
+    success: bool
+    message: str = None
+    total_registros: int
+    total_usuarios: int
+    usuarios_con_pendientes: List[str] = []
     datos: List[dict] = []
 
 # ENDPOINT 1: Validar análisis por correo
@@ -90,9 +99,7 @@ def exportar_pendientes_excel(
             # Si falla la exportación completa, intentar con versión simple
             try:
                 excel_buffer = excel_service.crear_excel_simple(
-                    datos=resultado["datos"],
-                    usuario_info=resultado.get("usuario_info", {}),
-                    correo_usuario=correo_usuario
+                    datos=resultado["datos"]
                 )
             except Exception as simple_error:
                 print(f"Error también en Excel simple: {str(simple_error)}")
@@ -121,6 +128,118 @@ def exportar_pendientes_excel(
         )
         
         return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error interno del servidor: {str(e)}"
+        )
+
+
+# ENDPOINT 3: Exportar TODOS los análisis pendientes de TODOS los usuarios a Excel
+@router.get("/pendientes/exportar-excel-todos")
+def exportar_todos_pendientes_excel(
+    db: Session = Depends(get_db)
+):
+    """
+    Exporta TODOS los análisis pendientes de TODOS los usuarios a un archivo Excel.
+    Incluye información detallada de cada usuario propietario de los análisis.
+    """
+    try:
+        # Obtener todos los datos del servicio
+        service = AnalisisSuelosValidadosService(db)
+        resultado = service.obtener_todos_los_pendientes_detallados()
+        
+        if not resultado["success"]:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=resultado["message"]
+            )
+        
+        # Crear el archivo Excel
+        excel_service = ExcelExportService()
+        excel_buffer = excel_service.exportar_todos_pendientes_a_excel(
+            datos=resultado["datos"],
+            total_usuarios=resultado.get("total_usuarios", 0),
+            usuarios_con_pendientes=resultado.get("usuarios_con_pendientes", [])
+        )
+        
+        if not excel_buffer:
+            # Si falla la exportación completa, intentar con versión simple
+            try:
+                excel_buffer = excel_service.crear_excel_simple_todos(
+                    datos=resultado["datos"]
+                )
+            except Exception as simple_error:
+                print(f"Error también en Excel simple de todos: {str(simple_error)}")
+                
+            if not excel_buffer:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Error al generar el archivo Excel"
+                )
+        
+        # Configurar respuesta de descarga
+        excel_buffer.seek(0)
+        
+        # Nombre del archivo con información general
+        fecha_actual = datetime.now().strftime("%Y%m%d_%H%M%S")
+        nombre_archivo = f"Todos_Analisis_Pendientes_{resultado.get('total_usuarios', 0)}_usuarios_{resultado.get('total_registros', 0)}_registros_{fecha_actual}.xlsx"
+        
+        response = StreamingResponse(
+            io.BytesIO(excel_buffer.read()),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f"attachment; filename={nombre_archivo}"
+            }
+        )
+        
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error interno del servidor: {str(e)}"
+        )
+
+# ENDPOINT 4: Obtener vista previa de todos los análisis pendientes (opcional)
+@router.get("/pendientes/todos", response_model=TodosAnalisisPendientesResponse)
+def obtener_todos_pendientes(
+    db: Session = Depends(get_db),
+    limite: int = 100
+):
+    """
+    Obtiene todos los análisis pendientes de todos los usuarios.
+    Útil para vista previa antes de exportar a Excel.
+    
+    Args:
+        limite: Número máximo de registros a devolver (por defecto 100)
+    """
+    try:
+        service = AnalisisSuelosValidadosService(db)
+        resultado = service.obtener_todos_los_pendientes_detallados()
+        
+        if not resultado["success"]:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=resultado["message"]
+            )
+        
+        # Limitar los datos si es necesario
+        datos_limitados = resultado["datos"][:limite] if limite > 0 else resultado["datos"]
+        
+        return TodosAnalisisPendientesResponse(
+            success=resultado["success"],
+            message=resultado["message"],
+            total_registros=resultado["total_registros"],
+            total_usuarios=resultado["total_usuarios"],
+            usuarios_con_pendientes=resultado.get("usuarios_con_pendientes", []),
+            datos=datos_limitados
+        )
         
     except HTTPException:
         raise

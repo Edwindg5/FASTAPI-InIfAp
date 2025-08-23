@@ -52,7 +52,7 @@ class ExcelExportService:
             if not datos:
                 return None
             
-            # Crear workbook y worksheet
+            # Crear workbook y wo
             wb = Workbook()
             ws = wb.active
             ws.title = "Análisis Pendientes"
@@ -106,7 +106,7 @@ class ExcelExportService:
         # Información del usuario
         fecha_actual = datetime.now().strftime("%d/%m/%Y %H:%M")
         
-        ws['A3'] = "INFORMACIÓN DEL USUARIO QUIN REGISTRO ESTE EXCEL CON STATUS PENDIENTE PARA QUE ESTE EN REVISION"
+        ws['A3'] = "INFORMACIÓN DEL USUARIO QUIN REGISTRO ESTE EXCEL CON STATUS PENDIENTE PARA QUE ESTE EN"
         ws['A3'].font = self.font_info
         ws['A3'].fill = self.fill_info
         
@@ -254,4 +254,189 @@ class ExcelExportService:
             
         except Exception as e:
             print(f"Error al crear Excel simple: {str(e)}")
+            return None
+
+    # NUEVOS MÉTODOS PARA TODOS LOS PENDIENTES
+    
+    def exportar_todos_pendientes_a_excel(
+        self, 
+        datos: List[Dict[str, Any]], 
+        total_usuarios: int,
+        usuarios_con_pendientes: List[str]
+    ) -> Optional[io.BytesIO]:
+        """
+        Exporta TODOS los análisis pendientes de TODOS los usuarios a un archivo Excel con formato profesional.
+        
+        Args:
+            datos: Lista de diccionarios con los datos de análisis de todos los usuarios
+            total_usuarios: Número total de usuarios con análisis pendientes
+            usuarios_con_pendientes: Lista de correos de usuarios con pendientes
+            
+        Returns:
+            BytesIO buffer con el archivo Excel o None si hay error
+        """
+        try:
+            if not datos:
+                return None
+            
+            # Crear workbook y worksheet
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Todos los Análisis Pendientes"
+            
+            # Configurar el worksheet
+            self._configurar_worksheet_todos_pendientes(ws, total_usuarios, usuarios_con_pendientes, len(datos))
+            
+            # Preparar datos para DataFrame
+            df_data = self._preparar_datos_todos_pendientes_para_dataframe(datos)
+            
+            # Crear DataFrame
+            df = pd.DataFrame(df_data)
+            
+            # Agregar datos al worksheet
+            fila_inicio_datos = 10  # Después de la información general
+            self._agregar_datos_al_worksheet(ws, df, fila_inicio_datos)
+            
+            # Aplicar estilos
+            self._aplicar_estilos(ws, df, fila_inicio_datos)
+            
+            # Ajustar anchos de columna
+            self._ajustar_anchos_columnas(ws, df)
+            
+            # Guardar en buffer
+            buffer = io.BytesIO()
+            wb.save(buffer)
+            buffer.seek(0)
+            
+            return buffer
+            
+        except Exception as e:
+            print(f"Error al crear archivo Excel de todos los pendientes: {str(e)}")
+            return None
+
+    def _configurar_worksheet_todos_pendientes(
+        self, 
+        ws: Worksheet, 
+        total_usuarios: int,
+        usuarios_con_pendientes: List[str],
+        total_registros: int
+    ):
+        """Configura la información inicial del worksheet para todos los pendientes"""
+        
+        # Título principal
+        ws.merge_cells('A1:F1')
+        ws['A1'] = "REPORTE COMPLETO DE ANÁLISIS DE SUELOS PENDIENTES - TODOS LOS USUARIOS"
+        ws['A1'].font = self.font_title
+        ws['A1'].fill = self.fill_title
+        ws['A1'].alignment = self.alignment_center
+        
+        # Información general
+        fecha_actual = datetime.now().strftime("%d/%m/%Y %H:%M")
+        
+        ws['A3'] = "INFORMACIÓN GENERAL DEL REPORTE"
+        ws['A3'].font = self.font_info
+        ws['A3'].fill = self.fill_info
+        
+        ws['A4'] = f"Total de usuarios con análisis pendientes: {total_usuarios}"
+        ws['A5'] = f"Total de análisis pendientes en el sistema: {total_registros}"
+        ws['A6'] = f"Fecha de generación del reporte: {fecha_actual}"
+        ws['A7'] = f"Generado por: Sistema de Análisis de Suelos"
+        
+        # Información de usuarios (mostrar solo los primeros 5 para no sobrecargar)
+        ws['A9'] = "USUARIOS CON ANÁLISIS PENDIENTES (Primeros 10):"
+        ws['A9'].font = Font(name='Arial', size=10, bold=True)
+        
+        usuarios_mostrar = usuarios_con_pendientes[:10] if len(usuarios_con_pendientes) > 10 else usuarios_con_pendientes
+        usuarios_texto = ", ".join(usuarios_mostrar)
+        if len(usuarios_con_pendientes) > 10:
+            usuarios_texto += f" ... y {len(usuarios_con_pendientes) - 10} más"
+        
+        # Dividir en múltiples celdas si es muy largo
+        if len(usuarios_texto) > 100:
+            ws['B9'] = usuarios_texto[:100] + "..."
+        else:
+            ws['B9'] = usuarios_texto
+
+    def _preparar_datos_todos_pendientes_para_dataframe(self, datos: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Prepara los datos organizándolos en el orden deseado para el DataFrame de todos los pendientes"""
+        
+        # Definir el orden y nombres de las columnas (incluyendo información del usuario)
+        columnas_ordenadas = [
+            ('numero_registro', 'No.'),
+            ('id', 'ID Análisis'),
+            ('usuario_correo', 'Correo del Usuario'),
+            ('usuario_nombre_completo', 'Nombre del Usuario'),
+            ('usuario_rol', 'Rol Usuario'),
+            ('municipio_cuadernillo', 'Municipio'),
+            ('localidad_cuadernillo', 'Localidad'),
+            ('nombre_productor', 'Nombre del Productor'),
+            ('tel_productor', 'Teléfono Productor'),
+            ('correo_productor', 'Correo Productor'),
+            ('nombre_tecnico', 'Nombre del Técnico'),
+            ('tel_tecnico', 'Teléfono Técnico'),
+            ('correo_tecnico', 'Correo Técnico'),
+            ('cultivo_anterior', 'Cultivo Anterior'),
+            ('cultivo_establecer', 'Cultivo a Establecer'),
+            ('manejo', 'Manejo'),
+            ('tipo_vegetacion', 'Tipo de Vegetación'),
+            ('parcela', 'Parcela'),
+            ('coordenada_x', 'Coordenada X'),
+            ('coordenada_y', 'Coordenada Y'),
+            ('elevacion_msnm', 'Elevación (msnm)'),
+            ('profundidad_muestreo', 'Profundidad de Muestreo'),
+            ('fecha_muestreo', 'Fecha de Muestreo'),
+            ('muestra', 'Muestra'),
+            ('reemplazo', 'Reemplazo'),
+            ('ddr', 'DDR'),
+            ('cader', 'CADER'),
+            ('clave', 'Clave'),
+            ('numero', 'Número'),
+            ('clave_estatal', 'Clave Estatal'),
+            ('clave_municipio', 'Clave Municipio'),
+            ('clave_munip', 'Clave Munip'),
+            ('clave_localidad', 'Clave Localidad'),
+            ('estado_cuadernillo', 'Estado Cuadernillo'),
+            ('recuento_curp_renapo', 'Recuento CURP RENAPO'),
+            ('extraccion_edo', 'Extracción Edo'),
+            ('nombre_revisor', 'Nombre del Revisor'),
+            ('fecha_creacion', 'Fecha de Creación')
+        ]
+        
+        datos_procesados = []
+        for dato in datos:
+            fila_procesada = {}
+            for campo_original, nombre_columna in columnas_ordenadas:
+                valor = dato.get(campo_original, '')
+                # Convertir None a string vacío y asegurar que todos los valores sean strings
+                fila_procesada[nombre_columna] = str(valor) if valor is not None else ''
+            
+            datos_procesados.append(fila_procesada)
+        
+        return datos_procesados
+
+    def crear_excel_simple_todos(self, datos: List[Dict[str, Any]]) -> Optional[io.BytesIO]:
+        """
+        Método alternativo para crear un Excel simple de todos los pendientes usando solo pandas
+        en caso de que la versión completa presente problemas
+        """
+        try:
+            if not datos:
+                return None
+            
+            # Preparar datos
+            df_data = self._preparar_datos_todos_pendientes_para_dataframe(datos)
+            df = pd.DataFrame(df_data)
+            
+            # Crear buffer
+            buffer = io.BytesIO()
+            
+            # Crear archivo Excel simple
+            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                df.to_excel(writer, sheet_name='Todos los Análisis Pendientes', index=False)
+            
+            buffer.seek(0)
+            return buffer
+            
+        except Exception as e:
+            print(f"Error al crear Excel simple de todos los pendientes: {str(e)}")
             return None
