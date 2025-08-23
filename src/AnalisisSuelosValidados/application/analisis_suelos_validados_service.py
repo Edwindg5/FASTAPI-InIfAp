@@ -341,3 +341,246 @@ class AnalisisSuelosValidadosService:
                 "total_usuarios": 0,
                 "datos": []
             }
+            
+            
+    def obtener_validados_detallados_por_correo(self, correo_usuario: str) -> dict:
+        """
+        Obtiene todos los análisis validados de un usuario específico con información detallada.
+        Optimizado para exportación y visualización completa.
+        """
+        try:
+            usuario = self.db.query(Users).filter(Users.correo == correo_usuario).first()
+            if not usuario:
+                return {
+                    "success": False,
+                    "message": "Usuario no encontrado",
+                    "total_registros": 0,
+                    "datos": []
+                }
+            
+            # Obtener TODOS los análisis validados del usuario
+            analisis_validados = (
+                self.db.query(AnalisisSuelosValidados)
+                .filter(AnalisisSuelosValidados.user_id_FK == usuario.ID_user)
+                .order_by(AnalisisSuelosValidados.fecha_validacion.desc())
+                .all()
+            )
+            
+            if not analisis_validados:
+                return {
+                    "success": False,
+                    "message": "No hay análisis validados para este usuario",
+                    "total_registros": 0,
+                    "usuario_info": {
+                        "id": usuario.ID_user,
+                        "correo": usuario.correo,
+                        "nombre": usuario.nombre,
+                        "apellido": usuario.apellido
+                    },
+                    "datos": []
+                }
+            
+            # Procesar todos los datos con manejo seguro de valores None
+            datos_procesados = []
+            for i, analisis in enumerate(analisis_validados, 1):
+                dato = {
+                    # Información básica
+                    "numero_registro": i,
+                    "id": getattr(analisis, 'id', None),
+                    "user_id": usuario.ID_user,
+                    
+                    # Información geográfica
+                    "municipio_id_FK": getattr(analisis, 'municipio_id_FK', None),
+                    "municipio_cuadernillo": getattr(analisis, 'municipio_cuadernillo', ''),
+                    "localidad_cuadernillo": getattr(analisis, 'localidad_cuadernillo', ''),
+                    "clave_municipio": getattr(analisis, 'clave_municipio', None),
+                    "clave_munip": getattr(analisis, 'clave_munip', ''),
+                    "clave_localidad": getattr(analisis, 'clave_localidad', ''),
+                    "estado_cuadernillo": getattr(analisis, 'estado_cuadernillo', ''),
+                    
+                    # Coordenadas y ubicación
+                    "coordenada_x": getattr(analisis, 'coordenada_x', ''),
+                    "coordenada_y": getattr(analisis, 'coordenada_y', ''),
+                    "elevacion_msnm": getattr(analisis, 'elevacion_msnm', None),
+                    
+                    # Información del productor
+                    "nombre_productor": getattr(analisis, 'nombre_productor', ''),
+                    "tel_productor": getattr(analisis, 'tel_productor', ''),
+                    "correo_productor": getattr(analisis, 'correo_productor', ''),
+                    
+                    # Información del técnico
+                    "nombre_tecnico": getattr(analisis, 'nombre_tecnico', ''),
+                    "tel_tecnico": getattr(analisis, 'tel_tecnico', ''),
+                    "correo_tecnico": getattr(analisis, 'correo_tecnico', ''),
+                    
+                    # Información agrícola
+                    "cultivo_anterior": getattr(analisis, 'cultivo_anterior', ''),
+                    "cultivo_establecer": getattr(analisis, 'cultivo_establecer', ''),
+                    "manejo": getattr(analisis, 'manejo', ''),
+                    "tipo_vegetacion": getattr(analisis, 'tipo_vegetacion', ''),
+                    "parcela": getattr(analisis, 'parcela', ''),
+                    
+                    # Información de muestreo
+                    "profundidad_muestreo": getattr(analisis, 'profundidad_muestreo', ''),
+                    "fecha_muestreo": str(analisis.fecha_muestreo) if getattr(analisis, 'fecha_muestreo', None) else '',
+                    "muestra": getattr(analisis, 'muestra', ''),
+                    "reemplazo": getattr(analisis, 'reemplazo', ''),
+                    
+                    # Información administrativa
+                    "numero": getattr(analisis, 'numero', None),
+                    "clave_estatal": getattr(analisis, 'clave_estatal', None),
+                    "recuento_curp_renapo": getattr(analisis, 'recuento_curp_renapo', None),
+                    "extraccion_edo": getattr(analisis, 'extraccion_edo', ''),
+                    "clave": getattr(analisis, 'clave', ''),
+                    "ddr": getattr(analisis, 'ddr', ''),
+                    "cader": getattr(analisis, 'cader', ''),
+                    "nombre_revisor": getattr(analisis, 'nombre_revisor', ''),
+                    
+                    # Fechas específicas de validados
+                    "fecha_validacion": str(analisis.fecha_validacion) if getattr(analisis, 'fecha_validacion', None) else '',
+                    "fecha_creacion": str(analisis.fecha_creacion) if getattr(analisis, 'fecha_creacion', None) else '',
+                }
+                
+                datos_procesados.append(dato)
+            
+            return {
+                "success": True,
+                "message": f"Se encontraron {len(analisis_validados)} análisis validados",
+                "total_registros": len(analisis_validados),
+                "usuario_info": {
+                    "id": usuario.ID_user,
+                    "correo": usuario.correo,
+                    "nombre": usuario.nombre or '',
+                    "apellido": usuario.apellido or ''
+                },
+                "datos": datos_procesados
+            }
+            
+        except Exception as e:
+            print(f"Error al obtener análisis validados detallados: {str(e)}")
+            return {
+                "success": False,
+                "message": f"Error al obtener datos: {str(e)}",
+                "total_registros": 0,
+                "datos": []
+            }
+
+    def obtener_todos_los_validados_detallados(self) -> dict:
+        """
+        Obtiene TODOS los análisis validados de TODOS los usuarios con información detallada.
+        Incluye información del usuario propietario de cada registro.
+        Optimizado para exportación y visualización completa.
+        """
+        try:
+            # Obtener TODOS los análisis validados con información del usuario
+            analisis_validados = (
+                self.db.query(AnalisisSuelosValidados, Users)
+                .join(Users, AnalisisSuelosValidados.user_id_FK == Users.ID_user)
+                .order_by(
+                    Users.correo.asc(),  # Ordenar por usuario primero
+                    AnalisisSuelosValidados.fecha_validacion.desc()  # Luego por fecha de validación
+                )
+                .all()
+            )
+            
+            if not analisis_validados:
+                return {
+                    "success": False,
+                    "message": "No hay análisis validados en el sistema",
+                    "total_registros": 0,
+                    "total_usuarios": 0,
+                    "datos": []
+                }
+            
+            # Procesar todos los datos con manejo seguro de valores None
+            datos_procesados = []
+            usuarios_unicos = set()
+            
+            for i, (analisis, usuario) in enumerate(analisis_validados, 1):
+                usuarios_unicos.add(usuario.correo)
+                
+                dato = {
+                    # Información básica del registro
+                    "numero_registro": i,
+                    "id": getattr(analisis, 'id', None),
+                    
+                    # Información del usuario propietario
+                    "user_id": usuario.ID_user,
+                    "usuario_correo": usuario.correo,
+                    "usuario_nombre": getattr(usuario, 'nombre', '') or '',
+                    "usuario_apellido": getattr(usuario, 'apellido', '') or '',
+                    "usuario_nombre_completo": f"{getattr(usuario, 'nombre', '') or ''} {getattr(usuario, 'apellido', '') or ''}".strip(),
+                    "usuario_rol": getattr(usuario, 'rol_id_FK', None),
+                    
+                    # Información geográfica
+                    "municipio_id_FK": getattr(analisis, 'municipio_id_FK', None),
+                    "municipio_cuadernillo": getattr(analisis, 'municipio_cuadernillo', ''),
+                    "localidad_cuadernillo": getattr(analisis, 'localidad_cuadernillo', ''),
+                    "clave_municipio": getattr(analisis, 'clave_municipio', None),
+                    "clave_munip": getattr(analisis, 'clave_munip', ''),
+                    "clave_localidad": getattr(analisis, 'clave_localidad', ''),
+                    "estado_cuadernillo": getattr(analisis, 'estado_cuadernillo', ''),
+                    
+                    # Coordenadas y ubicación
+                    "coordenada_x": getattr(analisis, 'coordenada_x', ''),
+                    "coordenada_y": getattr(analisis, 'coordenada_y', ''),
+                    "elevacion_msnm": getattr(analisis, 'elevacion_msnm', None),
+                    
+                    # Información del productor
+                    "nombre_productor": getattr(analisis, 'nombre_productor', ''),
+                    "tel_productor": getattr(analisis, 'tel_productor', ''),
+                    "correo_productor": getattr(analisis, 'correo_productor', ''),
+                    
+                    # Información del técnico
+                    "nombre_tecnico": getattr(analisis, 'nombre_tecnico', ''),
+                    "tel_tecnico": getattr(analisis, 'tel_tecnico', ''),
+                    "correo_tecnico": getattr(analisis, 'correo_tecnico', ''),
+                    
+                    # Información agrícola
+                    "cultivo_anterior": getattr(analisis, 'cultivo_anterior', ''),
+                    "cultivo_establecer": getattr(analisis, 'cultivo_establecer', ''),
+                    "manejo": getattr(analisis, 'manejo', ''),
+                    "tipo_vegetacion": getattr(analisis, 'tipo_vegetacion', ''),
+                    "parcela": getattr(analisis, 'parcela', ''),
+                    
+                    # Información de muestreo
+                    "profundidad_muestreo": getattr(analisis, 'profundidad_muestreo', ''),
+                    "fecha_muestreo": str(analisis.fecha_muestreo) if getattr(analisis, 'fecha_muestreo', None) else '',
+                    "muestra": getattr(analisis, 'muestra', ''),
+                    "reemplazo": getattr(analisis, 'reemplazo', ''),
+                    
+                    # Información administrativa
+                    "numero": getattr(analisis, 'numero', None),
+                    "clave_estatal": getattr(analisis, 'clave_estatal', None),
+                    "recuento_curp_renapo": getattr(analisis, 'recuento_curp_renapo', None),
+                    "extraccion_edo": getattr(analisis, 'extraccion_edo', ''),
+                    "clave": getattr(analisis, 'clave', ''),
+                    "ddr": getattr(analisis, 'ddr', ''),
+                    "cader": getattr(analisis, 'cader', ''),
+                    "nombre_revisor": getattr(analisis, 'nombre_revisor', ''),
+                    
+                    # Fechas específicas de validados
+                    "fecha_validacion": str(analisis.fecha_validacion) if getattr(analisis, 'fecha_validacion', None) else '',
+                    "fecha_creacion": str(analisis.fecha_creacion) if getattr(analisis, 'fecha_creacion', None) else '',
+                }
+                
+                datos_procesados.append(dato)
+            
+            return {
+                "success": True,
+                "message": f"Se encontraron {len(analisis_validados)} análisis validados de {len(usuarios_unicos)} usuarios",
+                "total_registros": len(analisis_validados),
+                "total_usuarios": len(usuarios_unicos),
+                "usuarios_con_validados": list(usuarios_unicos),
+                "datos": datos_procesados
+            }
+            
+        except Exception as e:
+            print(f"Error al obtener todos los análisis validados detallados: {str(e)}")
+            return {
+                "success": False,
+                "message": f"Error al obtener datos: {str(e)}",
+                "total_registros": 0,
+                "total_usuarios": 0,
+                "datos": []
+            }
