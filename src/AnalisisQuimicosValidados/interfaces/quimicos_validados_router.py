@@ -14,6 +14,7 @@ from src.AnalisisQuimicosValidados.application.quimicos_validados_service import
     validar_analisis_quimicos,
     obtener_analisis_validados_por_usuario,
     validar_analisis_por_correo_usuario,
+    eliminar_analisis_validados_por_correo
 )
 from src.AnalisisQuimicosValidados.application.excel_export_service import (
     generar_excel_pendientes_por_usuario,
@@ -253,4 +254,54 @@ def validar_usuario_simple(
         raise HTTPException(
             status_code=500,
             detail=f"Error al validar análisis del usuario: {str(e)}"
+        )
+        
+@router.delete("/usuario/{correo_usuario}/validados/")
+def eliminar_validados_usuario(
+    correo_usuario: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Elimina TODOS los análisis químicos validados de un usuario por su correo.
+    
+    Args:
+        correo_usuario (str): Correo electrónico del usuario
+        
+    Returns:
+        dict: Resultado de la eliminación
+        
+    Raises:
+        HTTPException: Si ocurre un error durante la eliminación
+    """
+    try:
+        print(f"=== ENDPOINT DELETE VALIDADOS PARA: {correo_usuario} ===")
+        
+        # Llamar al servicio de eliminación
+        resultado = eliminar_analisis_validados_por_correo(correo_usuario, db)
+        
+        if not resultado["success"]:
+            # Si el usuario no existe, devolver 404
+            if "no encontrado" in resultado["message"]:
+                raise HTTPException(
+                    status_code=404,
+                    detail=resultado["message"]
+                )
+            else:
+                # Otros errores, devolver 500
+                raise HTTPException(
+                    status_code=500,
+                    detail=resultado["message"]
+                )
+        
+        # Eliminación exitosa
+        print(f"✅ Eliminación exitosa: {resultado['eliminados']} registros")
+        return resultado
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error crítico en endpoint: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al eliminar análisis validados del usuario: {str(e)}"
         )

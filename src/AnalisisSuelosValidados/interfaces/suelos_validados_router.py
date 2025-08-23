@@ -224,8 +224,6 @@ class TodosAnalisisValidadosResponse(BaseModel):
     datos: List[dict] = []
 
 
-
-
 # ENDPOINT 6: Exportar TODOS los análisis validados de TODOS los usuarios a Excel
 @router.get("/validados/exportar-excel-todos")
 def exportar_todos_validados_excel(
@@ -336,4 +334,70 @@ def obtener_todos_los_validados(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error interno del servidor: {str(e)}"
+        )
+        
+class EliminarValidadosResponse(BaseModel):
+    success: bool
+    message: str
+    usuario: str = None
+    usuario_id: int = None
+    eliminados: int
+
+# NUEVO ENDPOINT DELETE para eliminar análisis de suelos validados
+@router.delete("/validados/eliminar/{correo_usuario}", response_model=EliminarValidadosResponse)
+def eliminar_validados_usuario(
+    correo_usuario: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Elimina TODOS los análisis de suelos validados de un usuario por su correo.
+    
+    Args:
+        correo_usuario (str): Correo electrónico del usuario
+        
+    Returns:
+        EliminarValidadosResponse: Resultado de la eliminación
+        
+    Raises:
+        HTTPException: Si ocurre un error durante la eliminación
+    """
+    try:
+        print(f"=== ENDPOINT DELETE SUELOS VALIDADOS PARA: {correo_usuario} ===")
+        
+        # Crear instancia del servicio y llamar al método de eliminación
+        service = AnalisisSuelosValidadosService(db)
+        resultado = service.eliminar_analisis_validados_por_correo(correo_usuario)
+        
+        if not resultado["success"]:
+            # Si el usuario no existe, devolver 404
+            if "no encontrado" in resultado["message"]:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=resultado["message"]
+                )
+            else:
+                # Otros errores, devolver 500
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=resultado["message"]
+                )
+        
+        # Eliminación exitosa
+        print(f"✅ Eliminación de suelos validados exitosa: {resultado['eliminados']} registros")
+        
+        return EliminarValidadosResponse(
+            success=resultado["success"],
+            message=resultado["message"],
+            usuario=resultado.get("usuario"),
+            usuario_id=resultado.get("usuario_id"),
+            eliminados=resultado["eliminados"]
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error crítico en endpoint delete suelos validados: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al eliminar análisis de suelos validados del usuario: {str(e)}"
         )

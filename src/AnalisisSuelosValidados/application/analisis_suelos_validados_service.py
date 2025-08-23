@@ -584,3 +584,88 @@ class AnalisisSuelosValidadosService:
                 "total_usuarios": 0,
                 "datos": []
             }
+
+    def eliminar_analisis_validados_por_correo(self, correo_usuario: str) -> dict:
+        """
+        Elimina TODOS los análisis de suelos validados asociados a un usuario por su correo.
+        Busca todos los registros en analisis_suelos_validados que tengan user_id_FK = usuario.ID_user
+        y los elimina permanentemente.
+        
+        Args:
+            correo_usuario (str): Correo electrónico del usuario
+            
+        Returns:
+            dict: Resultado de la operación de eliminación
+        """
+        try:
+            print(f"=== ELIMINANDO ANÁLISIS DE SUELOS VALIDADOS PARA: {correo_usuario} ===")
+            
+            # Buscar usuario por correo
+            usuario = self.db.query(Users).filter(
+                Users.correo == correo_usuario.strip().lower()
+            ).first()
+            
+            if not usuario:
+                print(f"Usuario no encontrado: {correo_usuario}")
+                return {
+                    "success": False,
+                    "message": f"Usuario con correo '{correo_usuario}' no encontrado",
+                    "eliminados": 0
+                }
+            
+            print(f"Usuario encontrado: ID={usuario.ID_user}, correo={usuario.correo}")
+            
+            # Contar cuántos análisis validados tiene el usuario
+            total_validados = (
+                self.db.query(AnalisisSuelosValidados)
+                .filter(AnalisisSuelosValidados.user_id_FK == usuario.ID_user)
+                .count()
+            )
+            
+            print(f"Análisis de suelos validados encontrados para eliminar: {total_validados}")
+            
+            if total_validados == 0:
+                return {
+                    "success": True,
+                    "message": "El usuario no tiene análisis de suelos validados para eliminar",
+                    "usuario": correo_usuario,
+                    "usuario_id": usuario.ID_user,
+                    "eliminados": 0
+                }
+            
+            # ELIMINAR todos los análisi validados del usuario
+            registros_eliminados = (
+                self.db.query(AnalisisSuelosValidados)
+                .filter(AnalisisSuelosValidados.user_id_FK == usuario.ID_user)
+                .delete(synchronize_session=False)
+            )
+            
+            # Hacer commit de la eliminación
+            self.db.commit()
+            
+            print(f"✅ ELIMINACIÓN DE SUELOS VALIDADOS COMPLETADA:")
+            print(f"   - Usuario: {correo_usuario} (ID: {usuario.ID_user})")
+            print(f"   - Registros eliminados: {registros_eliminados}")
+            
+            return {
+                "success": True,
+                "message": f"Se eliminaron {registros_eliminados} análisis de suelos validados exitosamente",
+                "usuario": correo_usuario,
+                "usuario_id": usuario.ID_user,
+                "eliminados": registros_eliminados
+            }
+            
+        except Exception as e:
+            print(f"❌ Error en eliminación de suelos validados: {e}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
+            
+            # Rollback en caso de error
+            self.db.rollback()
+            return {
+                "success": False,
+                "message": f"Error al eliminar análisis de suelos validados: {str(e)}",
+                "usuario": correo_usuario,
+                "eliminados": 0,
+                "error": str(e)
+            }

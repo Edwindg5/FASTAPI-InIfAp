@@ -3,8 +3,6 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import datetime
-
-# Importaciones corregidas - usar rutas absolutas
 from src.AnalisisQuimicosPendientes.infrastructure.analisis_quimicos_model import (
     AnalisisQuimicosPendientes,
 )
@@ -543,3 +541,92 @@ def obtener_analisis_validados_por_usuario(
     except Exception as e:
         print(f"Error en obtener_analisis_validados_por_usuario: {e}")
         return None
+    
+    
+def eliminar_analisis_validados_por_correo(
+    correo_usuario: str,
+    db: Session
+) -> dict:
+    """
+    Elimina TODOS los análisis validados asociados a un usuario por su correo.
+    Busca todos los registros en analisis_quimicos_validados que tengan user_id_FK = usuario.ID_user
+    y los elimina permanentemente.
+    
+    Args:
+        correo_usuario (str): Correo electrónico del usuario
+        db (Session): Sesión de base de datos
+        
+    Returns:
+        dict: Resultado de la operación de eliminación
+    """
+    try:
+        print(f"=== ELIMINANDO ANÁLISIS VALIDADOS PARA: {correo_usuario} ===")
+        
+        # Buscar usuario por correo
+        usuario = db.query(Users).filter(
+            Users.correo == correo_usuario.strip().lower()
+        ).first()
+        
+        if not usuario:
+            print(f"Usuario no encontrado: {correo_usuario}")
+            return {
+                "success": False,
+                "message": f"Usuario con correo '{correo_usuario}' no encontrado",
+                "eliminados": 0
+            }
+        
+        print(f"Usuario encontrado: ID={usuario.ID_user}, correo={usuario.correo}")
+        
+        # Contar cuántos análisis validados tiene el usuario
+        total_validados = (
+            db.query(AnalisisQuimicosValidados)
+            .filter(AnalisisQuimicosValidados.user_id_FK == usuario.ID_user)
+            .count()
+        )
+        
+        print(f"Análisis validados encontrados para eliminar: {total_validados}")
+        
+        if total_validados == 0:
+            return {
+                "success": True,
+                "message": "El usuario no tiene análisis validados para eliminar",
+                "usuario": correo_usuario,
+                "eliminados": 0
+            }
+        
+        # ELIMINAR todos los análisis validados del usuario
+        registros_eliminados = (
+            db.query(AnalisisQuimicosValidados)
+            .filter(AnalisisQuimicosValidados.user_id_FK == usuario.ID_user)
+            .delete(synchronize_session=False)
+        )
+        
+        # Hacer commit de la eliminación
+        db.commit()
+        
+        print(f"✅ ELIMINACIÓN COMPLETADA:")
+        print(f"   - Usuario: {correo_usuario} (ID: {usuario.ID_user})")
+        print(f"   - Registros eliminados: {registros_eliminados}")
+        
+        return {
+            "success": True,
+            "message": f"Se eliminaron {registros_eliminados} análisis validados exitosamente",
+            "usuario": correo_usuario,
+            "usuario_id": usuario.ID_user,
+            "eliminados": registros_eliminados
+        }
+        
+    except Exception as e:
+        print(f"❌ Error en eliminación: {e}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        
+        # Rollback en caso de error
+        db.rollback()
+        return {
+            "success": False,
+            "message": f"Error al eliminar análisis validados: {str(e)}",
+            "usuario": correo_usuario,
+            "eliminados": 0,
+            "error": str(e)
+        }
