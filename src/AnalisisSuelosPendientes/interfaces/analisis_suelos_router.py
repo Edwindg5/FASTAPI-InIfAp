@@ -8,7 +8,11 @@ from src.AnalisisSuelosPendientes.application.analisis_suelos_service import Ana
 from src.AnalisisSuelosPendientes.application.analisis_suelos_schemas import (
     AnalisisSuelosResponse, 
     AnalisisSuelosCreate, 
-    UploadResponse
+    UploadResponse,
+    ComentarioInvalidoCreate,
+    ComentarioInvalidoResponse,
+    VerificarComentariosRequest,
+    VerificarComentariosResponse
 )
 
 router = APIRouter(
@@ -109,3 +113,138 @@ def get_usuarios_con_analisis_pendientes(
         "total_usuarios_con_pendientes": len(usuarios_con_pendientes),
         "usuarios": usuarios_con_pendientes
     }
+    
+@router.post("/comentario-invalido", response_model=ComentarioInvalidoResponse)
+def crear_comentario_invalido(
+    comentario_data: ComentarioInvalidoCreate,
+    db: Session = Depends(get_db)
+):
+    """
+    Crea un comentario inválido para todos los análisis de suelos pendientes de un usuario.
+    
+    **Restricciones:**
+    - Solo administradores (rol_id = 1) pueden usar este endpoint
+    - El comentario se aplica a TODOS los análisis pendientes del usuario
+    
+    **Parámetros:**
+    - admin_id: ID del administrador que crea el comentario
+    - correo_usuario: Correo del usuario al que se le asignará el comentario
+    - comentario_invalido: Texto del comentario inválido
+    """
+    try:
+        resultado = AnalisisSuelosService.crear_comentario_invalido(
+            db=db,
+            admin_id=comentario_data.admin_id,
+            correo_usuario=comentario_data.correo_usuario,
+            comentario_invalido=comentario_data.comentario_invalido
+        )
+        
+        return ComentarioInvalidoResponse(**resultado)
+        
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
+
+
+# NUEVO ENDPOINT - Verificar y procesar comentarios inválidos
+@router.post("/comentarios/verificar", response_model=VerificarComentariosResponse)
+def verificar_comentarios_invalidos(
+    request: VerificarComentariosRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Verifica si un usuario tiene comentarios inválidos y permite marcarlos como recibidos.
+    
+    **Acciones disponibles:**
+    - **'verificar'**: Solo verifica si hay comentarios inválidos y los muestra
+    - **'recibido'**: Marca los comentarios como recibidos y elimina AUTOMÁTICAMENTE todos los registros con comentarios
+    
+    **Importante:** 
+    - La acción 'recibido' eliminará permanentemente todos los análisis de suelos que tengan comentarios inválidos
+    - Esta acción no se puede deshacer
+    
+    **Parámetros:**
+    - correo_usuario: Correo del usuario a verificar
+    - accion: 'verificar' o 'recibido'
+    """
+    try:
+        resultado = AnalisisSuelosService.verificar_y_procesar_comentarios(
+            db=db,
+            correo_usuario=request.correo_usuario,
+            accion=request.accion
+        )
+        
+        return VerificarComentariosResponse(**resultado)
+        
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
+
+
+# ENDPOINT ADICIONAL - Obtener comentarios por correo (solo verificar, más simple)
+@router.get("/comentarios/{correo_usuario}", response_model=VerificarComentariosResponse)
+def obtener_comentarios_invalidos(
+    correo_usuario: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Endpoint simplificado para solo verificar comentarios inválidos de un usuario.
+    
+    **Uso:** GET /analisis-suelos-pendientes/comentarios/usuario@ejemplo.com
+    
+    **Parámetros:**
+    - correo_usuario: Correo del usuario a verificar
+    
+    **Retorna:**
+    - Lista de comentarios inválidos del usuario
+    - Total de registros afectados
+    - Estado de los comentarios
+    """
+    try:
+        resultado = AnalisisSuelosService.verificar_y_procesar_comentarios(
+            db=db,
+            correo_usuario=correo_usuario,
+            accion="verificar"
+        )
+        
+        return VerificarComentariosResponse(**resultado)
+        
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
+
+
+# ENDPOINT ADICIONAL - Eliminar comentarios por correo (acción directa)
+@router.delete("/comentarios/{correo_usuario}", response_model=VerificarComentariosResponse)
+def eliminar_comentarios_invalidos(
+    correo_usuario: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Endpoint directo para eliminar comentarios inválidos y sus registros asociados.
+    
+    **Uso:** DELETE /analisis-suelos-pendientes/comentarios/usuario@ejemplo.com
+    
+    **ADVERTENCIA:** 
+    - Este endpoint elimina PERMANENTEMENTE todos los registros con comentarios inválidos
+    - La acción no se puede deshacer
+    
+    **Parámetros:**
+    - correo_usuario: Correo del usuario cuyos comentarios se eliminarán
+    """
+    try:
+        resultado = AnalisisSuelosService.verificar_y_procesar_comentarios(
+            db=db,
+            correo_usuario=correo_usuario,
+            accion="recibido"
+        )
+        
+        return VerificarComentariosResponse(**resultado)
+        
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")

@@ -1,7 +1,7 @@
 # src/AnalisisSuelosPendientes/application/analisis_suelos_schemas.py
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from datetime import date, datetime
-from typing import Optional, List
+from typing import Optional, List, Literal
 
 class AnalisisSuelosBase(BaseModel):
     municipio_id_FK: Optional[int] = None
@@ -59,8 +59,7 @@ class UploadResponse(BaseModel):
     processing_time_seconds: float = 0.0  
     errors: List[str] = []
     municipios_not_found: List[str] = []
-    
-    
+
 class UsuarioConPendientesResponse(BaseModel):
     """Schema para mostrar usuarios con análisis pendientes"""
     user_id: int
@@ -78,3 +77,36 @@ class ResumenUsuariosPendientesResponse(BaseModel):
     """Schema para el resumen completo de usuarios con pendientes"""
     total_usuarios_con_pendientes: int
     usuarios: List[UsuarioConPendientesResponse]
+
+# NUEVOS SCHEMAS PARA COMENTARIOS INVÁLIDOS
+class ComentarioInvalidoCreate(BaseModel):
+    """Schema para crear comentario inválido"""
+    admin_id: int
+    correo_usuario: EmailStr
+    comentario_invalido: str
+    
+    class Config:
+        from_attributes = True
+
+class ComentarioInvalidoResponse(BaseModel):
+    """Schema de respuesta para comentario creado"""
+    message: str
+    comentario_id: int
+    correo_usuario: str
+    comentario_invalido: str
+    registros_afectados: int
+    fecha_comentario: datetime
+
+class VerificarComentariosRequest(BaseModel):
+    """Schema para verificar comentarios"""
+    correo_usuario: EmailStr
+    accion: Literal["verificar", "recibido"]
+
+class VerificarComentariosResponse(BaseModel):
+    """Schema de respuesta para verificar comentarios"""
+    correo_usuario: str
+    tiene_comentarios: bool
+    total_comentarios: int
+    comentarios: List[str] = []
+    message: str
+    registros_eliminados: Optional[int] = None
