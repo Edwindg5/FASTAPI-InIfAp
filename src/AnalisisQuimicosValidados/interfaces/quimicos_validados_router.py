@@ -151,7 +151,7 @@ def descargar_pendientes_excel(
         
         # Retornar como descarga
         return StreamingResponse(
-            io=buffer_excel,
+            buffer_excel,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={
                 "Content-Disposition": f"attachment; filename={nombre_archivo}"
