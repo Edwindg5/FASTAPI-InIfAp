@@ -62,12 +62,13 @@ def _obtener_usuario_por_correo(correo: str, db: Session) -> Optional[Users]:
     """
     return db.query(Users).filter(Users.correo == correo.lower().strip()).first()
 
-# ======================= ENDPOINTS EXISTENTES =======================
+# ======================= ENDPOINTS =======================
 
 @router.post("/upload-excel/")
 async def upload_excel(
     file: UploadFile, 
     correo_usuario: str = Form(..., description="Correo electrónico del usuario que sube el archivo"),
+    nombre_archivo: str = Form(..., description="Nombre descriptivo para el archivo (se guardará en la BD)"),
     db: Session = Depends(get_db)
 ):
     """
@@ -76,6 +77,7 @@ async def upload_excel(
     Args:
         file: Archivo Excel a procesar
         correo_usuario: Correo electrónico del usuario (debe existir en la tabla users)
+        nombre_archivo: Nombre descriptivo del archivo (se registra en la BD para referencia)
         db: Sesión de base de datos
     
     Returns:
@@ -95,9 +97,23 @@ async def upload_excel(
             detail="El correo del usuario es obligatorio"
         )
     
+    # Validar que el nombre del archivo no esté vacío
+    if not nombre_archivo or not nombre_archivo.strip():
+        raise HTTPException(
+            status_code=400, 
+            detail="El nombre del archivo es obligatorio"
+        )
+    
     try:
         file_bytes = await file.read()
-        resumen = procesar_excel_y_guardar(file_bytes, correo_usuario.strip(), db)
+        
+        # ¡NUEVO PARÁMETRO! - Pasar nombre_archivo al servicio
+        resumen = procesar_excel_y_guardar(
+            file_bytes, 
+            correo_usuario.strip(), 
+            nombre_archivo.strip(),  # ¡NUEVO!
+            db
+        )
         
         # Si la validación del usuario falló, devolver error HTTP
         if not resumen.get("success", False) and "no encontrado" in resumen.get("error", ""):
@@ -184,6 +200,7 @@ async def agregar_comentario_invalido(
                     localidad=None,
                     nombre_productor=None,
                     comentario_invalido=comentario,
+                    nombre_archivo="comentario_admin.xlsx",  # ¡NUEVO! - Nombre por defecto para comentarios
                     estatus="invalidado"
                 )
                 db.add(nuevo_registro)
@@ -354,7 +371,7 @@ async def verificar_y_limpiar_comentario_invalido(
             detail=f"Error interno del servidor: {str(e)}"
         )
 
-# ======================= NUEVO ENDPOINT PRINCIPAL =======================
+# ======================= ENDPOINT PARA USUARIOS CON DATOS PENDIENTES =======================
 
 @router.get("/usuarios-con-datos-pendientes/", response_model=ListaUsuariosResponse)
 async def obtener_usuarios_con_datos_pendientes_endpoint(

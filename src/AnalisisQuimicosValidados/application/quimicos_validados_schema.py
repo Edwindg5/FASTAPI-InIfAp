@@ -41,6 +41,8 @@ class AnalisisQuimicoValidadoBase(BaseModel):
     ca_k: Optional[Decimal] = None
     ca_mg_k: Optional[Decimal] = None
     k_mg: Optional[Decimal] = None
+    # ¡NUEVO CAMPO AGREGADO!
+    nombre_archivo: Optional[str] = None
 
 class AnalisisQuimicoValidadoCreate(AnalisisQuimicoValidadoBase):
     pass
@@ -93,6 +95,8 @@ class AnalisisPendienteResponse(BaseModel):
     k_mg: Optional[Decimal] = None
     estatus: Optional[str] = None
     comentario_invalido: Optional[str] = None
+    # ¡CAMPO YA EXISTE EN PENDIENTES!
+    nombre_archivo: Optional[str] = None
     fecha_creacion: Optional[datetime] = None
 
     class Config:

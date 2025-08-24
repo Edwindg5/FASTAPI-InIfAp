@@ -50,6 +50,7 @@ class AnalisisQuimicosPendientes(Base):
 
     estatus = Column(String(20), default="pendiente")
     comentario_invalido = Column(String(255), nullable=True)
+    nombre_archivo = Column(String(255), nullable=True)  # ¡NUEVA COLUMNA!
     fecha_creacion = Column(DateTime, default=func.now())
 
     # Relaciones

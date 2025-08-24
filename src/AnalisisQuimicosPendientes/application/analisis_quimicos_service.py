@@ -12,7 +12,7 @@ from src.AnalisisQuimicosPendientes.infrastructure.analisis_quimicos_model impor
     AnalisisQuimicosPendientes,
 )
 from src.municipios.infrastructure.municipios_model import Municipios
-from src.Users.infrastructure.users_model import Users  # ¡NUEVA IMPORTACIÓN!
+from src.Users.infrastructure.users_model import Users
 
 # ===================== Helpers de normalización y limpieza ===================== #
 
@@ -129,7 +129,6 @@ def _to_decimal(v) -> Optional[float]:
     except (ValueError, OverflowError):
         return None
 
-
 # ===================== Nueva función para validar usuario ===================== #
 
 def _validar_usuario(correo_usuario: str, db: Session) -> Optional[int]:
@@ -150,7 +149,6 @@ def _validar_usuario(correo_usuario: str, db: Session) -> Optional[int]:
         return usuario.ID_user
     
     return None
-
 
 # ===================== Nueva función para validar municipio ===================== #
 
@@ -182,7 +180,6 @@ def _validar_municipio(nombre_municipio: str, db: Session) -> Optional[int]:
                 return municipio_db.id_municipio
     
     return None
-
 
 # ----------- Mapeo de nombres esperados a posibles sinónimos/variantes ---------- #
 
@@ -231,7 +228,6 @@ NUMERIC_FIELDS = [
 
 FILLDOWN_FIELDS = ["municipio", "localidad", "nombre_productor"]
 
-
 # ========================= Detección de encabezados mejorada ============================ #
 
 def _find_header_row(df_raw: pd.DataFrame) -> int:
@@ -278,7 +274,6 @@ def _find_header_row(df_raw: pd.DataFrame) -> int:
             return i
     
     return best_row
-
 
 def _build_column_map(cols: List[str]) -> Dict[str, Optional[str]]:
     """
@@ -365,17 +360,15 @@ def _build_column_map(cols: List[str]) -> Dict[str, Optional[str]]:
 
     return mapping
 
-
 def _get_val(row: pd.Series, colname: Optional[str]):
     """Obtiene el valor de una columna específica en la fila."""
     if not colname or colname not in row.index:
         return None
     return row[colname]
 
+# ============================ Función principal actualizada ================================ #
 
-# ============================ Función principal corregida ================================ #
-
-def procesar_excel_y_guardar(file_bytes: bytes, correo_usuario: str, db: Session):
+def procesar_excel_y_guardar(file_bytes: bytes, correo_usuario: str, nombre_archivo: str, db: Session):
     """
     Lee el Excel desde bytes, detecta encabezados, mapea columnas, limpia/convierte valores,
     hace forward-fill en campos clave, valida municipios y usuario contra la BD y guarda en BD. 
@@ -384,6 +377,7 @@ def procesar_excel_y_guardar(file_bytes: bytes, correo_usuario: str, db: Session
     Args:
         file_bytes: Contenido del archivo Excel en bytes
         correo_usuario: Correo del usuario que está subiendo el archivo
+        nombre_archivo: Nombre del archivo Excel para registrar en la BD
         db: Sesión de base de datos
     """
     try:
@@ -400,6 +394,16 @@ def procesar_excel_y_guardar(file_bytes: bytes, correo_usuario: str, db: Session
                 "municipios_validados_exitosamente": 0,
                 "errores": [],
             }
+
+        # ===== VALIDAR Y PROCESAR NOMBRE DE ARCHIVO =====
+        if not nombre_archivo or not nombre_archivo.strip():
+            nombre_archivo_procesado = "archivo_sin_nombre.xlsx"
+        else:
+            # Limpiar el nombre del archivo (quitar caracteres especiales pero mantener extensión)
+            nombre_archivo_procesado = nombre_archivo.strip()
+            # Asegurar que tenga extensión Excel si no la tiene
+            if not nombre_archivo_procesado.lower().endswith(('.xlsx', '.xls')):
+                nombre_archivo_procesado += '.xlsx'
 
         # 1) Leer todo como objeto para preservar tipos. Sin encabezados.
         df_raw = pd.read_excel(io.BytesIO(file_bytes), header=None, engine="openpyxl")
@@ -508,10 +512,11 @@ def procesar_excel_y_guardar(file_bytes: bytes, correo_usuario: str, db: Session
                             "error": f"Municipio '{municipio_nombre}' no encontrado en la base de datos"
                         })
 
-                # Crear registro
+                # Crear registro (¡INCLUYENDO NOMBRE_ARCHIVO!)
                 registro = AnalisisQuimicosPendientes(
                     municipio_id_FK=municipio_id_fk,  # ID del municipio validado
-                    user_id_FK=user_id,  # ¡NUEVO! - ID del usuario validado
+                    user_id_FK=user_id,  # ID del usuario validado
+                    nombre_archivo=nombre_archivo_procesado,  # ¡NUEVO CAMPO!
                     municipio=data.get("municipio"),
                     localidad=data.get("localidad"),
                     nombre_productor=data.get("nombre_productor"),
@@ -567,8 +572,9 @@ def procesar_excel_y_guardar(file_bytes: bytes, correo_usuario: str, db: Session
         
         return {
             "success": True,
-            "user_id": user_id,  # ¡NUEVO! - ID del usuario validado
-            "user_email": correo_usuario,  # ¡NUEVO! - Correo del usuario
+            "user_id": user_id,  # ID del usuario validado
+            "user_email": correo_usuario,  # Correo del usuario
+            "nombre_archivo": nombre_archivo_procesado,  # ¡NUEVO! - Nombre del archivo procesado
             "rows_total_leidas": int(len(df)),
             "insertadas": int(inserted),
             "saltadas": int(skipped),
@@ -596,4 +602,5 @@ def procesar_excel_y_guardar(file_bytes: bytes, correo_usuario: str, db: Session
             "header_row_idx": 0,
             "column_map": {},
             "columns_detected": [],
+            "nombre_archivo": nombre_archivo if 'nombre_archivo' in locals() else "archivo_error.xlsx"
         }

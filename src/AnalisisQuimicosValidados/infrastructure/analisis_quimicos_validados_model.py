@@ -48,6 +48,9 @@ class AnalisisQuimicosValidados(Base):
     ca_mg_k = Column(DECIMAL(10,2), nullable=True)
     k_mg = Column(DECIMAL(10,2), nullable=True)
 
+    # ¡NUEVO CAMPO AGREGADO!
+    nombre_archivo = Column(String(255), nullable=True)
+    
     fecha_validacion = Column(DateTime, default=func.now())
     fecha_creacion = Column(DateTime, default=func.now())
 

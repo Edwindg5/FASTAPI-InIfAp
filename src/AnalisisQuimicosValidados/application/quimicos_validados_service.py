@@ -3,6 +3,7 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import datetime
+from sqlalchemy import and_
 from src.AnalisisQuimicosPendientes.infrastructure.analisis_quimicos_model import (
     AnalisisQuimicosPendientes,
 )
@@ -299,65 +300,73 @@ def validar_analisis_quimicos(
         }
 
 
+
+
+
+
+from src.AnalisisQuimicosPendientes.infrastructure.analisis_quimicos_model import AnalisisQuimicosPendientes
+from src.AnalisisQuimicosValidados.infrastructure.analisis_quimicos_validados_model import AnalisisQuimicosValidados
+from src.Users.infrastructure.users_model import Users
+
 def validar_analisis_por_correo_usuario(
     correo_usuario: str,
     comentario_validacion: Optional[str],
     db: Session
 ) -> dict:
     """
-    Valida TODOS los análisis pendientes de un usuario específico por su correo.
-    El user_id_FK en la tabla validados será del Administrador (ID=1).
-    ELIMINA completamente los registros de analisis_quimicos_pendientes después de validar.
+    Valida todos los análisis pendientes de un usuario por su correo.
+    Incluye el campo nombre_archivo en la transferencia.
+    
+    Args:
+        correo_usuario: Correo del usuario
+        comentario_validacion: Comentario opcional de validación
+        db: Sesión de base de datos
+        
+    Returns:
+        dict: Resultado de la operación con detalles
     """
     try:
-        print(f"=== VALIDANDO ANÁLISIS POR CORREO: {correo_usuario} ===")
+        print(f"=== INICIANDO VALIDACIÓN POR CORREO: {correo_usuario} ===")
         
-        # Buscar usuario por correo
-        usuario = db.query(Users).filter(
-            Users.correo == correo_usuario.strip().lower()
-        ).first()
+        # 1. Buscar usuario por correo
+        usuario = db.query(Users).filter(Users.correo == correo_usuario.strip().lower()).first()
         
         if not usuario:
             return {
                 "success": False,
                 "message": f"Usuario con correo '{correo_usuario}' no encontrado",
-                "validados": 0,
-                "errores": []
+                "validados": 0
             }
         
-        print(f"Usuario encontrado: {usuario.ID_user} - {usuario.correo}")
+        print(f"✓ Usuario encontrado: ID {usuario.ID_user}")
         
-        # Obtener análisis pendientes del usuario
-        analisis_pendientes = (
-            db.query(AnalisisQuimicosPendientes)
-            .filter(
+        # 2. Obtener análisis pendientes del usuario
+        analisis_pendientes = db.query(AnalisisQuimicosPendientes).filter(
+            and_(
                 AnalisisQuimicosPendientes.user_id_FK == usuario.ID_user,
                 AnalisisQuimicosPendientes.estatus == "pendiente"
             )
-            .all()
-        )
+        ).all()
         
         if not analisis_pendientes:
             return {
                 "success": True,
-                "message": "El usuario no tiene análisis pendientes",
-                "validados": 0,
-                "errores": []
+                "message": f"Usuario '{correo_usuario}' no tiene análisis pendientes",
+                "validados": 0
             }
         
-        print(f"Análisis pendientes encontrados: {len(analisis_pendientes)}")
+        print(f"✓ Encontrados {len(analisis_pendientes)} análisis pendientes")
         
-        validados = 0
-        errores = []
-        registros_a_eliminar = []  # Lista para guardar los IDs a eliminar
-        fecha_validacion = datetime.now()
+        # 3. Transferir a tabla de validados
+        validados_count = 0
+        eliminados_count = 0
         
         for analisis in analisis_pendientes:
             try:
-                # Crear registro en tabla de validados con ID del Administrador
-                analisis_validado = AnalisisQuimicosValidados(
+                # Crear registro en tabla de validados incluyendo nombre_archivo
+                nuevo_validado = AnalisisQuimicosValidados(
                     municipio_id_FK=analisis.municipio_id_FK,
-                    user_id_FK=ADMINISTRADOR_ID,  # IMPORTANTE: ID del Administrador
+                    user_id_FK=1,  # Administrador
                     municipio=analisis.municipio,
                     localidad=analisis.localidad,
                     nombre_productor=analisis.nombre_productor,
@@ -392,84 +401,48 @@ def validar_analisis_por_correo_usuario(
                     ca_k=analisis.ca_k,
                     ca_mg_k=analisis.ca_mg_k,
                     k_mg=analisis.k_mg,
-                    fecha_validacion=fecha_validacion,
+                    # ¡INCLUIR EL CAMPO NOMBRE_ARCHIVO!
+                    nombre_archivo=analisis.nombre_archivo,
+                    fecha_validacion=datetime.now(),
                     fecha_creacion=analisis.fecha_creacion
                 )
                 
-                db.add(analisis_validado)
+                db.add(nuevo_validado)
+                validados_count += 1
                 
-                # Guardar ID del registro para eliminarlo después
-                registros_a_eliminar.append(analisis.id)
+                # Eliminar de pendientes
+                db.delete(analisis)
+                eliminados_count += 1
                 
-                validados += 1
-                print(f"Análisis {analisis.id} validado exitosamente (Administrador ID: {ADMINISTRADOR_ID})")
+                print(f"✓ Análisis {analisis.id} transferido (archivo: {analisis.nombre_archivo})")
                 
             except Exception as e:
-                print(f"Error validando análisis {analisis.id}: {e}")
-                errores.append({
-                    "analisis_id": analisis.id,
-                    "error": f"Error al validar análisis {analisis.id}: {str(e)}"
-                })
+                print(f"✗ Error al transferir análisis {analisis.id}: {e}")
                 continue
         
-        # Si hay validaciones exitosas, proceder con la eliminación
-        if validados > 0:
-            try:
-                # ELIMINAR completamente los registros de la tabla pendientes
-                registros_eliminados = (
-                    db.query(AnalisisQuimicosPendientes)
-                    .filter(AnalisisQuimicosPendientes.id.in_(registros_a_eliminar))
-                    .delete(synchronize_session=False)
-                )
-                
-                print(f"Eliminando {registros_eliminados} registros de analisis_quimicos_pendientes")
-                
-                # Hacer commit de todo: inserciones en validados + eliminaciones en pendientes
-                db.commit()
-                
-                print(f"✓ PROCESO COMPLETADO:")
-                print(f"  - {validados} análisis movidos a tabla validados (user_id_FK = {ADMINISTRADOR_ID})")
-                print(f"  - {registros_eliminados} registros ELIMINADOS de tabla pendientes")
-                
-                return {
-                    "success": True,
-                    "message": f"Se validaron y eliminaron {validados} análisis exitosamente",
-                    "usuario_validado": correo_usuario,
-                    "validados": validados,
-                    "eliminados": registros_eliminados,
-                    "errores": errores,
-                    "administrador_id": ADMINISTRADOR_ID
-                }
-                
-            except Exception as e:
-                print(f"Error durante la eliminación: {e}")
-                db.rollback()
-                return {
-                    "success": False,
-                    "message": f"Error al eliminar registros pendientes: {str(e)}",
-                    "validados": 0,
-                    "errores": [{"error": f"Error en eliminación: {str(e)}"}]
-                }
-        else:
-            db.rollback()
-            return {
-                "success": False,
-                "message": "No se pudo validar ningún análisis",
-                "validados": 0,
-                "errores": errores
-            }
-            
-    except Exception as e:
-        print(f"Error general en validación por correo: {e}")
-        import traceback
-        print(f"Traceback: {traceback.format_exc()}")
+        # 4. Confirmar cambios
+        db.commit()
         
+        print(f"✅ PROCESO COMPLETADO:")
+        print(f"   - Validados: {validados_count}")
+        print(f"   - Eliminados: {eliminados_count}")
+        print(f"   - Asignados a Administrador ID: 1")
+        
+        return {
+            "success": True,
+            "message": f"Análisis validados exitosamente para {correo_usuario}",
+            "validados": validados_count,
+            "eliminados": eliminados_count,
+            "administrador_id": 1
+        }
+        
+    except Exception as e:
         db.rollback()
+        print(f"❌ Error en validación: {e}")
         return {
             "success": False,
-            "message": f"Error general en la validación: {str(e)}",
-            "validados": 0,
-            "errores": [{"error": f"Error general: {str(e)}"}]
+            "message": f"Error al validar análisis: {str(e)}",
+            "validados": 0
         }
 
 
