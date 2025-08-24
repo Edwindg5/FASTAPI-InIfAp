@@ -1,13 +1,20 @@
 # src/AnalisisQuimicosPendientes/interfaces/analisis_quimicos_router.py
 from fastapi import APIRouter, UploadFile, Depends, Form, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from src.core.database import get_db
 from src.AnalisisQuimicosPendientes.application.analisis_quimicos_service import procesar_excel_y_guardar
+from src.AnalisisQuimicosPendientes.application.usuario_service import (
+    obtener_usuarios_con_datos_pendientes,
+    generar_excel_usuario,
+    obtener_info_usuario_para_descarga
+)
 from src.AnalisisQuimicosPendientes.infrastructure.analisis_quimicos_model import AnalisisQuimicosPendientes
 from src.Users.infrastructure.users_model import Users
 from src.rol.infrastructure.rol_model import Rol  # Ajusta la ruta según tu estructura
 from pydantic import BaseModel, EmailStr
-from typing import Optional
+from typing import Optional, List
+import io
 
 router = APIRouter(prefix="/analisis-quimicos", tags=["Análisis Químicos"])
 
@@ -20,6 +27,22 @@ class AgregarComentarioInvalidoRequest(BaseModel):
 class ComentarioInvalidoResponse(BaseModel):
     tiene_comentario: bool
     comentario_invalido: Optional[str] = None
+    mensaje: str
+
+class UsuarioConDatosResponse(BaseModel):
+    user_id: int
+    nombre_usuario: str
+    correo: str
+    fecha_creacion: Optional[str]
+    ultima_actualizacion: Optional[str]
+    estatus: str
+    total_registros: int
+    registros_pendientes: int
+    registros_invalidados: int
+
+class ListaUsuariosResponse(BaseModel):
+    usuarios: List[UsuarioConDatosResponse]
+    total_usuarios: int
     mensaje: str
 
 # ======================= HELPER FUNCTIONS =======================
@@ -95,8 +118,6 @@ async def upload_excel(
             status_code=500,
             detail=f"Error interno del servidor: {str(e)}"
         )
-
-# ======================= NUEVOS ENDPOINTS =======================
 
 @router.post("/agregar-comentario-invalido/")
 async def agregar_comentario_invalido(
@@ -331,4 +352,114 @@ async def verificar_y_limpiar_comentario_invalido(
         raise HTTPException(
             status_code=500,
             detail=f"Error interno del servidor: {str(e)}"
+        )
+
+# ======================= NUEVO ENDPOINT PRINCIPAL =======================
+
+@router.get("/usuarios-con-datos-pendientes/", response_model=ListaUsuariosResponse)
+async def obtener_usuarios_con_datos_pendientes_endpoint(
+    db: Session = Depends(get_db)
+):
+    """
+    Obtiene todos los usuarios que tienen registros de análisis químicos pendientes.
+    
+    Muestra información básica del usuario, fechas de creación, estatus y estadísticas
+    de sus registros. Incluye opción para descargar Excel con todos los datos del usuario.
+    
+    Args:
+        db: Sesión de base de datos
+    
+    Returns:
+        Lista de usuarios con datos pendientes y estadísticas
+    """
+    try:
+        usuarios = obtener_usuarios_con_datos_pendientes(db)
+        
+        # Convertir a formato de respuesta
+        usuarios_response = [
+            UsuarioConDatosResponse(
+                user_id=usuario["user_id"],
+                nombre_usuario=usuario["nombre_usuario"],
+                correo=usuario["correo"],
+                fecha_creacion=usuario["fecha_creacion"],
+                ultima_actualizacion=usuario["ultima_actualizacion"],
+                estatus=usuario["estatus"],
+                total_registros=usuario["total_registros"],
+                registros_pendientes=usuario["registros_pendientes"],
+                registros_invalidados=usuario["registros_invalidados"]
+            )
+            for usuario in usuarios
+        ]
+        
+        return ListaUsuariosResponse(
+            usuarios=usuarios_response,
+            total_usuarios=len(usuarios_response),
+            mensaje=f"Se encontraron {len(usuarios_response)} usuario(s) con registros pendientes"
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al obtener usuarios con datos pendientes: {str(e)}"
+        )
+
+@router.get("/descargar-datos-usuario/{user_id}")
+async def descargar_datos_usuario_excel(
+    user_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Descarga un archivo Excel con todos los datos de análisis químicos de un usuario específico.
+    
+    Args:
+        user_id: ID del usuario del cual descargar los datos
+        db: Sesión de base de datos
+    
+    Returns:
+        Archivo Excel con todos los registros del usuario
+    """
+    try:
+        # 1. Verificar que el usuario existe
+        info_usuario = obtener_info_usuario_para_descarga(user_id, db)
+        if not info_usuario:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Usuario con ID {user_id} no encontrado"
+            )
+        
+        # 2. Verificar que el usuario tiene registros
+        if info_usuario["total_registros"] == 0:
+            raise HTTPException(
+                status_code=404,
+                detail=f"El usuario '{info_usuario['nombre_completo']}' no tiene registros de análisis químicos"
+            )
+        
+        # 3. Generar el archivo Excel
+        excel_bytes = generar_excel_usuario(user_id, db)
+        if not excel_bytes:
+            raise HTTPException(
+                status_code=500,
+                detail="Error al generar el archivo Excel"
+            )
+        
+        # 4. Crear respuesta de descarga
+        excel_stream = io.BytesIO(excel_bytes)
+        
+        headers = {
+            'Content-Disposition': f'attachment; filename="{info_usuario["nombre_archivo"]}"',
+            'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        }
+        
+        return StreamingResponse(
+            io.BytesIO(excel_bytes),
+            media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers=headers
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error interno al generar descarga: {str(e)}"
         )

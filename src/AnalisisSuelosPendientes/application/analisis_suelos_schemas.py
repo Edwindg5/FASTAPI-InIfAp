@@ -1,7 +1,7 @@
 # src/AnalisisSuelosPendientes/application/analisis_suelos_schemas.py
 from pydantic import BaseModel, EmailStr
 from datetime import date, datetime
-from typing import Optional, List, Literal
+from typing import Any, Dict, Optional, List, Literal
 
 class AnalisisSuelosBase(BaseModel):
     municipio_id_FK: Optional[int] = None
@@ -110,3 +110,96 @@ class VerificarComentariosResponse(BaseModel):
     comentarios: List[str] = []
     message: str
     registros_eliminados: Optional[int] = None
+    
+class EstadisticasGeneralesResponse(BaseModel):
+    """Schema para estadísticas generales del sistema"""
+    total_analisis_pendientes: int
+    total_usuarios_con_pendientes: int
+    municipios_mas_frecuentes: List[Dict[str, Any]] = []
+    usuarios_con_mas_pendientes: List[Dict[str, Any]] = []
+    fecha_consulta: datetime
+    
+    class Config:
+        from_attributes = True
+
+class MunicipioFrecuenteResponse(BaseModel):
+    """Schema para municipios más frecuentes"""
+    municipio: str
+    total: int
+
+class UsuarioTopResponse(BaseModel):
+    """Schema para usuarios con más pendientes"""
+    correo: str
+    total_pendientes: int
+    
+class EliminarPendientesResponse(BaseModel):
+    """Schema de respuesta para eliminación de pendientes"""
+    message: str
+    correo_usuario: str
+    user_id: int
+    registros_eliminados: int
+    total_antes: int
+    fecha_eliminacion: datetime
+    
+    class Config:
+        from_attributes = True
+        
+class UsuarioConValidadosResponse(BaseModel):
+    """Schema para mostrar usuarios con análisis validados"""
+    user_id: int
+    nombre_usuario: Optional[str] = None
+    apellido_usuario: Optional[str] = None
+    correo_usuario: Optional[str] = None
+    total_validados: int
+    ultimo_analisis_fecha: Optional[datetime] = None
+    municipios_involucrados: List[str] = []
+    
+    class Config:
+        from_attributes = True
+
+class ResumenUsuariosValidadosResponse(BaseModel):
+    """Schema para el resumen completo de usuarios con validados"""
+    total_usuarios_con_validados: int
+    usuarios: List[UsuarioConValidadosResponse]
+
+class UsuarioInfoResponse(BaseModel):
+    """Schema para información básica del usuario"""
+    user_id: int
+    nombre_completo: str
+    correo: str
+
+class AnalisisValidadoDetalleResponse(BaseModel):
+    """Schema para detalle de un análisis validado"""
+    id: int
+    numero: Optional[int] = None
+    fecha_creacion: datetime
+    municipio_cuadernillo: Optional[str] = None
+    localidad_cuadernillo: Optional[str] = None
+    clave_estatal: Optional[int] = None
+    clave_municipio: Optional[int] = None
+    cultivo_establecer: Optional[str] = None
+    nombre_tecnico: Optional[str] = None
+    nombre_productor: Optional[str] = None
+    fecha_muestreo: Optional[date] = None
+    estatus: str
+    nombre_revisor: Optional[str] = None
+
+class AnalisisValidadosPorCorreoResponse(BaseModel):
+    """Schema para análisis validados de un usuario específico"""
+    usuario_info: UsuarioInfoResponse
+    total_validados: int
+    analisis_validados: List[AnalisisValidadoDetalleResponse]
+    municipios_involucrados: List[str] = []
+    ultimo_analisis_fecha: Optional[datetime] = None
+    message: str
+
+class EstadisticasValidadosResponse(BaseModel):
+    """Schema para estadísticas de análisis validados"""
+    total_analisis_validados: int
+    total_usuarios_con_validados: int
+    municipios_mas_frecuentes: List[Dict[str, Any]] = []
+    usuarios_con_mas_validados: List[Dict[str, Any]] = []
+    fecha_consulta: datetime
+    
+    class Config:
+        from_attributes = True
