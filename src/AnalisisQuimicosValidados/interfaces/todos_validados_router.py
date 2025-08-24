@@ -33,44 +33,7 @@ router = APIRouter(prefix="/todos-los-validados", tags=["Todos los Análisis Qui
 todos_validados_router = router
 
 
-@router.get("/completo/")
-def obtener_todos_validados_completo(db: Session = Depends(get_db)):
-    """
-    Obtiene TODOS los análisis validados sin límite (usar con precaución).
-    
-    Returns:
-        Dict: Todos los análisis validados sin paginación
-    """
-    try:
-        print("=== ENDPOINT: OBTENER TODOS LOS VALIDADOS COMPLETO (SIN LÍMITE) ===")
-        
-        # Obtener todos sin límite
-        resultado = obtener_todos_los_validados(db, limit=None)
-        
-        if not resultado["success"]:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Error al obtener análisis validados: {resultado.get('error', 'Error desconocido')}"
-            )
-        
-        return {
-            "success": True,
-            "message": f"Se obtuvieron TODOS los {resultado['total_registros']} análisis validados",
-            "warning": "Este endpoint retorna todos los registros sin paginación",
-            **resultado
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"❌ Error: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error al obtener todos los validados: {str(e)}"
-        )
 
-
-# =================== ENDPOINTS DE DESCARGA EXCEL ===================
 
 @router.get("/excel/todos/")
 def descargar_excel_todos_validados(db: Session = Depends(get_db)):
@@ -430,3 +393,51 @@ def verificar_analisis_validados_usuario_endpoint(
             status_code=500,
             detail=f"Error al verificar análisis validados: {str(e)}"
         )
+
+@router.get("/listar/todos/")
+def listar_todos_validados(
+    db: Session = Depends(get_db)
+):
+    """
+    Lista TODOS los análisis químicos validados con información básica (SIN LÍMITE).
+    
+    ⚠️  PRECAUCIÓN: Este endpoint retorna todos los registros sin paginación.
+    
+    Returns:
+        Dict: Lista completa de análisis validados con información del usuario
+    """
+    try:
+        print("=== ENDPOINT: LISTAR TODOS LOS VALIDADOS (SIN LÍMITE) ===")
+        
+        # Importar servicio
+        from src.AnalisisQuimicosValidados.application.listar_validados_service import (
+            listar_todos_validados_con_usuario
+        )
+        
+        resultado = listar_todos_validados_con_usuario(db)
+        
+        if not resultado["success"]:
+            raise HTTPException(
+                status_code=500,
+                detail=resultado["message"]
+            )
+        
+        return {
+            "success": True,
+            "message": "Análisis validados obtenidos exitosamente",
+            "data": resultado["data"],
+            "total": resultado["total"],
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al obtener análisis validados: {str(e)}"
+        )
+
+
+    correo_usuario: str = Query(..., description="Correo del usuario"),

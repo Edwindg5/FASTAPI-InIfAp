@@ -121,3 +121,26 @@ class UserAnalisisResponse(BaseModel):
 
     class Config:
         from_attributes = True
+        
+class AnalisisValidadoListResponse(BaseModel):
+    """Schema para la respuesta de listado de análisis validados"""
+    id: int
+    nombre_usuario: Optional[str] = None
+    correo_usuario: str
+    estatus: str
+    nombre_archivo: Optional[str] = None
+    fecha_validacion: Optional[str] = None
+    fecha_creacion: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class ListadoValidadosResponse(BaseModel):
+    """Schema para la respuesta completa del listado"""
+    success: bool
+    message: str
+    data: List[AnalisisValidadoListResponse]
+    total: int
+    limit: int
+    offset: int
+    timestamp: str

@@ -39,6 +39,7 @@ class UsuarioConDatosResponse(BaseModel):
     total_registros: int
     registros_pendientes: int
     registros_invalidados: int
+    nombres_archivos: List[str] = []  # ¡NUEVO CAMPO!
 
 class ListaUsuariosResponse(BaseModel):
     usuarios: List[UsuarioConDatosResponse]
@@ -380,14 +381,15 @@ async def obtener_usuarios_con_datos_pendientes_endpoint(
     """
     Obtiene todos los usuarios que tienen registros de análisis químicos pendientes.
     
-    Muestra información básica del usuario, fechas de creación, estatus y estadísticas
-    de sus registros. Incluye opción para descargar Excel con todos los datos del usuario.
+    Muestra información básica del usuario, fechas de creación, estatus, estadísticas
+    de sus registros y nombres de archivos que ha subido. Incluye opción para descargar 
+    Excel con todos los datos del usuario.
     
     Args:
         db: Sesión de base de datos
     
     Returns:
-        Lista de usuarios con datos pendientes y estadísticas
+        Lista de usuarios con datos pendientes, estadísticas y nombres de archivos
     """
     try:
         usuarios = obtener_usuarios_con_datos_pendientes(db)
@@ -403,7 +405,8 @@ async def obtener_usuarios_con_datos_pendientes_endpoint(
                 estatus=usuario["estatus"],
                 total_registros=usuario["total_registros"],
                 registros_pendientes=usuario["registros_pendientes"],
-                registros_invalidados=usuario["registros_invalidados"]
+                registros_invalidados=usuario["registros_invalidados"],
+                nombres_archivos=usuario["nombres_archivos"]  # ¡NUEVO CAMPO!
             )
             for usuario in usuarios
         ]
