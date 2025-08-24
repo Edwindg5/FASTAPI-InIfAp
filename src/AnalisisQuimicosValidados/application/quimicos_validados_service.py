@@ -96,11 +96,11 @@ def obtener_analisis_pendientes_por_usuario(
     correo_usuario: str, db: Session
 ) -> Optional[dict]:
     """
-    Obtiene todos los análisis químicos pendientes de un usuario por su correo electrónico.
-    Versión simplificada que retorna dict en lugar de schema.
+    Obtiene información simplificada de análisis químicos pendientes de un usuario.
+    Solo retorna: nombre_archivo único y cantidad total por archivo.
     """
     try:
-        print(f"Buscando usuario: {correo_usuario}")
+        print(f"Buscando pendientes para usuario: {correo_usuario}")
         
         # Buscar usuario por correo
         usuario = db.query(Users).filter(
@@ -113,52 +113,52 @@ def obtener_analisis_pendientes_por_usuario(
         
         print(f"Usuario encontrado: {usuario.ID_user}")
         
-        # Obtener análisis pendientes del usuario
-        analisis_pendientes = (
-            db.query(AnalisisQuimicosPendientes)
+        # Obtener análisis pendientes agrupados por nombre_archivo
+        from sqlalchemy import func
+        
+        analisis_agrupados = (
+            db.query(
+                AnalisisQuimicosPendientes.nombre_archivo,
+                func.count(AnalisisQuimicosPendientes.id).label('cantidad'),
+                func.min(AnalisisQuimicosPendientes.fecha_creacion).label('primera_fecha'),
+                func.max(AnalisisQuimicosPendientes.fecha_creacion).label('ultima_fecha')
+            )
             .filter(
                 AnalisisQuimicosPendientes.user_id_FK == usuario.ID_user,
                 AnalisisQuimicosPendientes.estatus == "pendiente"
             )
-            .order_by(AnalisisQuimicosPendientes.fecha_creacion.desc())
+            .group_by(AnalisisQuimicosPendientes.nombre_archivo)
+            .order_by(func.max(AnalisisQuimicosPendientes.fecha_creacion).desc())
             .all()
         )
         
-        print(f"Análisis pendientes encontrados: {len(analisis_pendientes)}")
+        print(f"Archivos encontrados: {len(analisis_agrupados)}")
         
-        # Convertir a diccionarios simples
-        analisis_response = []
-        for analisis in analisis_pendientes:
+        # Calcular total de análisis pendientes
+        total_pendientes = sum(archivo.cantidad for archivo in analisis_agrupados)
+        
+        # Convertir a lista de archivos únicos
+        archivos_response = []
+        for archivo in analisis_agrupados:
             try:
-                analisis_dict = {
-                    "id": analisis.id,
-                    "municipio_id_FK": analisis.municipio_id_FK,
-                    "user_id_FK": analisis.user_id_FK,
-                    "municipio": analisis.municipio,
-                    "localidad": analisis.localidad,
-                    "nombre_productor": analisis.nombre_productor,
-                    "cultivo_anterior": analisis.cultivo_anterior,
-                    "estatus": analisis.estatus,
-                    "fecha_creacion": analisis.fecha_creacion.isoformat() if analisis.fecha_creacion else None,
-                    # Agregar campos numéricos principales
-                    "ph": float(analisis.ph) if analisis.ph else None,
-                    "mo": float(analisis.mo) if analisis.mo else None,
-                    "fosforo": float(analisis.fosforo) if analisis.fosforo else None,
-                    "k": float(analisis.k) if analisis.k else None,
-                    "mg": float(analisis.mg) if analisis.mg else None,
-                    "ca": float(analisis.ca) if analisis.ca else None,
+                archivo_dict = {
+                    "nombre_archivo": archivo.nombre_archivo or "Sin archivo",
+                    "cantidad_analisis": int(archivo.cantidad),
+                    "fecha_primer_registro": archivo.primera_fecha.strftime("%Y-%m-%d %H:%M:%S") if archivo.primera_fecha else None,
+                    "fecha_ultimo_registro": archivo.ultima_fecha.strftime("%Y-%m-%d %H:%M:%S") if archivo.ultima_fecha else None
                 }
-                analisis_response.append(analisis_dict)
+                archivos_response.append(archivo_dict)
             except Exception as e:
-                print(f"Error procesando análisis {analisis.id}: {e}")
+                print(f"Error procesando archivo {archivo.nombre_archivo}: {e}")
                 continue
         
         return {
             "user_id": usuario.ID_user,
             "correo_usuario": usuario.correo,
-            "nombre_usuario": f"{usuario.nombre or ''} {usuario.apellido or ''}".strip(),
-            "total_pendientes": len(analisis_pendientes),
-            "analisis_pendientes": analisis_response
+            "nombre_usuario": f"{usuario.nombre or ''} {usuario.apellido or ''}".strip() or "Sin nombre",
+            "total_pendientes": total_pendientes,
+            "total_archivos": len(analisis_agrupados),
+            "archivos_pendientes": archivos_response
         }
         
     except Exception as e:
@@ -166,7 +166,6 @@ def obtener_analisis_pendientes_por_usuario(
         import traceback
         print(f"Traceback: {traceback.format_exc()}")
         return None
-
 
 def validar_analisis_quimicos(
     analisis_ids: List[int], 
@@ -603,3 +602,295 @@ def eliminar_analisis_validados_por_correo(
             "eliminados": 0,
             "error": str(e)
         }
+        
+        
+def validar_analisis_por_correo_y_archivo(
+    correo_usuario: str,
+    nombre_archivo: str,
+    comentario_validacion: Optional[str],
+    db: Session
+) -> dict:
+    """
+    Valida todos los análisis pendientes de un usuario por su correo Y nombre de archivo específico.
+    Incluye el campo nombre_archivo en la transferencia.
+    
+    Args:
+        correo_usuario: Correo del usuario
+        nombre_archivo: Nombre específico del archivo a validar
+        comentario_validacion: Comentario opcional de validación
+        db: Sesión de base de datos
+        
+    Returns:
+        dict: Resultado de la operación con detalles
+    """
+    try:
+        print(f"=== INICIANDO VALIDACIÓN POR CORREO Y ARCHIVO ===")
+        print(f"Usuario: {correo_usuario}")
+        print(f"Archivo: {nombre_archivo}")
+        
+        # 1. Buscar usuario por correo
+        usuario = db.query(Users).filter(Users.correo == correo_usuario.strip().lower()).first()
+        
+        if not usuario:
+            return {
+                "success": False,
+                "message": f"Usuario con correo '{correo_usuario}' no encontrado",
+                "validados": 0
+            }
+        
+        print(f"✓ Usuario encontrado: ID {usuario.ID_user}")
+        
+        # 2. Obtener análisis pendientes del usuario CON EL NOMBRE DE ARCHIVO ESPECÍFICO
+        analisis_pendientes = db.query(AnalisisQuimicosPendientes).filter(
+            and_(
+                AnalisisQuimicosPendientes.user_id_FK == usuario.ID_user,
+                AnalisisQuimicosPendientes.estatus == "pendiente",
+                AnalisisQuimicosPendientes.nombre_archivo == nombre_archivo.strip()
+            )
+        ).all()
+        
+        if not analisis_pendientes:
+            return {
+                "success": False,
+                "message": f"Usuario '{correo_usuario}' no tiene análisis pendientes con el archivo '{nombre_archivo}'",
+                "validados": 0,
+                "usuario": correo_usuario,
+                "archivo_solicitado": nombre_archivo
+            }
+        
+        print(f"✓ Encontrados {len(analisis_pendientes)} análisis pendientes para el archivo '{nombre_archivo}'")
+        
+        # 3. Transferir a tabla de validados
+        validados_count = 0
+        eliminados_count = 0
+        
+        for analisis in analisis_pendientes:
+            try:
+                # Crear registro en tabla de validados incluyendo nombre_archivo
+                nuevo_validado = AnalisisQuimicosValidados(
+                    municipio_id_FK=analisis.municipio_id_FK,
+                    user_id_FK=1,  # Administrador
+                    municipio=analisis.municipio,
+                    localidad=analisis.localidad,
+                    nombre_productor=analisis.nombre_productor,
+                    cultivo_anterior=analisis.cultivo_anterior,
+                    arcilla=analisis.arcilla,
+                    limo=analisis.limo,
+                    arena=analisis.arena,
+                    textura=analisis.textura,
+                    da=analisis.da,
+                    ph=analisis.ph,
+                    mo=analisis.mo,
+                    fosforo=analisis.fosforo,
+                    n_inorganico=analisis.n_inorganico,
+                    k=analisis.k,
+                    mg=analisis.mg,
+                    ca=analisis.ca,
+                    na=analisis.na,
+                    al=analisis.al,
+                    cic=analisis.cic,
+                    cic_calculada=analisis.cic_calculada,
+                    h=analisis.h,
+                    azufre=analisis.azufre,
+                    hierro=analisis.hierro,
+                    cobre=analisis.cobre,
+                    zinc=analisis.zinc,
+                    manganeso=analisis.manganeso,
+                    boro=analisis.boro,
+                    columna1=analisis.columna1,
+                    columna2=analisis.columna2,
+                    ca_mg=analisis.ca_mg,
+                    mg_k=analisis.mg_k,
+                    ca_k=analisis.ca_k,
+                    ca_mg_k=analisis.ca_mg_k,
+                    k_mg=analisis.k_mg,
+                    # ¡INCLUIR EL CAMPO NOMBRE_ARCHIVO!
+                    nombre_archivo=analisis.nombre_archivo,
+                    fecha_validacion=datetime.now(),
+                    fecha_creacion=analisis.fecha_creacion
+                )
+                
+                db.add(nuevo_validado)
+                validados_count += 1
+                
+                # Eliminar de pendientes
+                db.delete(analisis)
+                eliminados_count += 1
+                
+                print(f"✓ Análisis {analisis.id} transferido (archivo: {analisis.nombre_archivo})")
+                
+            except Exception as e:
+                print(f"✗ Error al transferir análisis {analisis.id}: {e}")
+                continue
+        
+        # 4. Confirmar cambios
+        db.commit()
+        
+        print(f"✅ PROCESO COMPLETADO:")
+        print(f"   - Usuario: {correo_usuario}")
+        print(f"   - Archivo: {nombre_archivo}")
+        print(f"   - Validados: {validados_count}")
+        print(f"   - Eliminados: {eliminados_count}")
+        print(f"   - Asignados a Administrador ID: 1")
+        
+        return {
+            "success": True,
+            "message": f"Análisis del archivo '{nombre_archivo}' validados exitosamente para {correo_usuario}",
+            "validados": validados_count,
+            "eliminados": eliminados_count,
+            "administrador_id": 1,
+            "usuario": correo_usuario,
+            "archivo_validado": nombre_archivo
+        }
+        
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Error en validación: {e}")
+        return {
+            "success": False,
+            "message": f"Error al validar análisis: {str(e)}",
+            "validados": 0,
+            "usuario": correo_usuario,
+            "archivo_solicitado": nombre_archivo,
+            "error": str(e)
+        }
+        
+def eliminar_analisis_pendientes_por_archivo(
+    correo_usuario: str,
+    nombre_archivo: str,
+    db: Session
+) -> dict:
+    """
+    Elimina todos los análisis pendientes de un usuario por correo y nombre de archivo específico.
+    """
+    try:
+        print(f"=== ELIMINANDO PENDIENTES POR ARCHIVO ===")
+        print(f"Usuario: {correo_usuario}, Archivo: {nombre_archivo}")
+        
+        # Buscar usuario por correo
+        usuario = db.query(Users).filter(
+            Users.correo == correo_usuario.strip().lower()
+        ).first()
+        
+        if not usuario:
+            return {
+                "success": False,
+                "message": f"Usuario con correo '{correo_usuario}' no encontrado",
+                "eliminados": 0
+            }
+        
+        # Contar análisis pendientes con ese archivo
+        total_pendientes = (
+            db.query(AnalisisQuimicosPendientes)
+            .filter(
+                AnalisisQuimicosPendientes.user_id_FK == usuario.ID_user,
+                AnalisisQuimicosPendientes.estatus == "pendiente",
+                AnalisisQuimicosPendientes.nombre_archivo == nombre_archivo.strip()
+            )
+            .count()
+        )
+        
+        if total_pendientes == 0:
+            return {
+                "success": True,
+                "message": f"No hay análisis pendientes con el archivo '{nombre_archivo}'",
+                "eliminados": 0,
+                "usuario": correo_usuario,
+                "archivo": nombre_archivo
+            }
+        
+        # Eliminar análisis pendientes
+        registros_eliminados = (
+            db.query(AnalisisQuimicosPendientes)
+            .filter(
+                AnalisisQuimicosPendientes.user_id_FK == usuario.ID_user,
+                AnalisisQuimicosPendientes.estatus == "pendiente",
+                AnalisisQuimicosPendientes.nombre_archivo == nombre_archivo.strip()
+            )
+            .delete(synchronize_session=False)
+        )
+        
+        db.commit()
+        
+        print(f"✅ Eliminados {registros_eliminados} análisis pendientes del archivo '{nombre_archivo}'")
+        
+        return {
+            "success": True,
+            "message": f"Se eliminaron {registros_eliminados} análisis pendientes exitosamente",
+            "usuario": correo_usuario,
+            "archivo": nombre_archivo,
+            "eliminados": registros_eliminados
+        }
+        
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Error: {e}")
+        return {
+            "success": False,
+            "message": f"Error al eliminar análisis pendientes: {str(e)}",
+            "eliminados": 0,
+            "error": str(e)
+        }
+        
+        
+def obtener_analisis_validados_agrupados_por_usuario(
+    correo_usuario: str, db: Session
+) -> Optional[dict]:
+    """
+    Obtiene los análisis validados de un usuario agrupados por nombre de archivo.
+    """
+    try:
+        print(f"Obteniendo validados agrupados para: {correo_usuario}")
+        
+        # Buscar usuario por correo
+        usuario = db.query(Users).filter(
+            Users.correo == correo_usuario.strip().lower()
+        ).first()
+        
+        if not usuario:
+            return None
+
+        analisis_agrupados = (
+            db.query(
+                AnalisisQuimicosValidados.nombre_archivo,
+                func.count(AnalisisQuimicosValidados.id).label('cantidad'),
+                func.min(AnalisisQuimicosValidados.fecha_creacion).label('primera_fecha'),
+                func.max(AnalisisQuimicosValidados.fecha_creacion).label('ultima_fecha')
+            )
+            .filter(AnalisisQuimicosValidados.user_id_FK == 1)  # Administrador
+            .group_by(AnalisisQuimicosValidados.nombre_archivo)
+            .order_by(func.max(AnalisisQuimicosValidados.fecha_validacion).desc())
+            .all()
+        )
+        
+        # Calcular totales
+        total_validados = sum(archivo.cantidad for archivo in analisis_agrupados)
+        
+        # Convertir a lista de archivos únicos
+        archivos_response = []
+        for archivo in analisis_agrupados:
+            try:
+                archivo_dict = {
+                    "nombre_archivo": archivo.nombre_archivo or "Sin archivo",
+                    "cantidad_analisis": int(archivo.cantidad),
+                    "fecha_primer_registro": archivo.primera_fecha.strftime("%Y-%m-%d %H:%M:%S") if archivo.primera_fecha else None,
+                    "fecha_ultimo_registro": archivo.ultima_fecha.strftime("%Y-%m-%d %H:%M:%S") if archivo.ultima_fecha else None
+                }
+                archivos_response.append(archivo_dict)
+            except Exception as e:
+                print(f"Error procesando archivo validado {archivo.nombre_archivo}: {e}")
+                continue
+        
+        return {
+            "user_id": usuario.ID_user,
+            "correo_usuario": usuario.correo,
+            "nombre_usuario": f"{usuario.nombre or ''} {usuario.apellido or ''}".strip() or "Sin nombre",
+            "total_validados": total_validados,
+            "total_archivos": len(analisis_agrupados),
+            "archivos_validados": archivos_response
+        }
+        
+    except Exception as e:
+        print(f"Error en obtener_analisis_validados_agrupados_por_usuario: {e}")
+        return None
+    

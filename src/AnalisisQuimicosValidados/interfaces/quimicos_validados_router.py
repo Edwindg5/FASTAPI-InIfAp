@@ -6,6 +6,7 @@ from sqlalchemy import text
 from typing import List, Optional
 import traceback
 
+from src.AnalisisQuimicosValidados.application.eliminar_validados_service import eliminar_analisis_validados_con_admin
 from src.core.database import get_db
 from src.Users.infrastructure.users_model import Users
 from src.AnalisisQuimicosValidados.application.quimicos_validados_service import (
@@ -14,7 +15,10 @@ from src.AnalisisQuimicosValidados.application.quimicos_validados_service import
     validar_analisis_quimicos,
     obtener_analisis_validados_por_usuario,
     validar_analisis_por_correo_usuario,
-    eliminar_analisis_validados_por_correo
+    eliminar_analisis_validados_por_correo,
+    eliminar_analisis_pendientes_por_archivo,
+    obtener_analisis_validados_agrupados_por_usuario,
+
 )
 from src.AnalisisQuimicosValidados.application.excel_export_service import (
     generar_excel_pendientes_por_usuario,
@@ -211,24 +215,48 @@ def validar_analisis(
 @router.post("/validar-simple/{correo_usuario}/")
 def validar_usuario_simple(
     correo_usuario: str,
+    request_data: dict,  # Cambio: ahora recibe datos en el body
     db: Session = Depends(get_db)
 ):
     """
-    Endpoint simple que retorna {"status": "validado"} o error.
-    Valida todos los análisis pendientes del usuario, los asigna al Administrador (ID=1)
-    y ELIMINA completamente los registros de la tabla analisis_quimicos_pendientes.
+    Endpoint que valida análisis pendientes de un usuario por correo Y nombre de archivo específico.
+    Retorna {"status": "validado"} o error.
+    
+    Body esperado:
+    {
+        "nombre_archivo": "archivo.xlsx",
+        "comentario_validacion": "opcional"
+    }
     """
     try:
-        print(f"=== VALIDACIÓN SIMPLE CON ELIMINACIÓN PARA: {correo_usuario} ===")
+        print(f"=== VALIDACIÓN SIMPLE CON ARCHIVO ESPECÍFICO PARA: {correo_usuario} ===")
         
-        # Validar análisis del usuario (ahora incluye eliminación)
-        resultado = validar_analisis_por_correo_usuario(
-            correo_usuario, None, db
+        # Obtener nombre del archivo del request body
+        nombre_archivo = request_data.get("nombre_archivo")
+        comentario_validacion = request_data.get("comentario_validacion")
+        
+        if not nombre_archivo:
+            raise HTTPException(
+                status_code=400,
+                detail="El campo 'nombre_archivo' es requerido en el body del request"
+            )
+        
+        print(f"Archivo a validar: {nombre_archivo}")
+        
+        # Importar la nueva función
+        from src.AnalisisQuimicosValidados.application.quimicos_validados_service import (
+            validar_analisis_por_correo_y_archivo
+        )
+        
+        # Validar análisis del usuario con archivo específico
+        resultado = validar_analisis_por_correo_y_archivo(
+            correo_usuario, nombre_archivo, comentario_validacion, db
         )
         
         if resultado["success"] and resultado["validados"] > 0:
             print(f"✅ PROCESO COMPLETADO EXITOSAMENTE:")
             print(f"   - Usuario: {correo_usuario}")
+            print(f"   - Archivo: {nombre_archivo}")
             print(f"   - Análisis validados: {resultado['validados']}")
             print(f"   - Registros eliminados: {resultado.get('eliminados', 0)}")
             print(f"   - Asignados a Administrador ID: {resultado['administrador_id']}")
@@ -236,9 +264,16 @@ def validar_usuario_simple(
             # Respuesta simple como solicitaste
             return {"status": "validado"}
             
-        elif resultado["success"] and resultado["validados"] == 0:
-            print(f"ℹ️  Usuario sin pendientes: {correo_usuario}")
+        elif not resultado["success"] and "no tiene análisis pendientes" in resultado["message"]:
+            print(f"ℹ️  No hay pendientes para el archivo: {nombre_archivo}")
             return {"status": "sin_pendientes"}
+            
+        elif not resultado["success"] and "no encontrado" in resultado["message"]:
+            print(f"❌ Usuario no encontrado: {correo_usuario}")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Usuario con correo '{correo_usuario}' no encontrado"
+            )
             
         else:
             print(f"❌ Error en validación: {resultado['message']}")
@@ -255,17 +290,70 @@ def validar_usuario_simple(
             status_code=500,
             detail=f"Error al validar análisis del usuario: {str(e)}"
         )
-        
-@router.delete("/usuario/{correo_usuario}/validados/")
-def eliminar_validados_usuario(
+
+# Opcionalmente, puedes agregar un endpoint alernativo con query parameters
+@router.post("/validar-simple-query/{correo_usuario}/")
+def validar_usuario_simple_query(
     correo_usuario: str,
+    nombre_archivo: str = Query(..., description="Nombre del archivo a validar"),
+    comentario_validacion: Optional[str] = Query(None, description="Comentario opcional"),
     db: Session = Depends(get_db)
 ):
     """
-    Elimina TODOS los análisis químicos validados de un usuario por su correo.
+    Endpoint alternativo que valida análisis pendientes usando query parameters.
+    Ejemplo: /validar-simple-query/usuario@email.com/?nombre_archivo=datos.xlsx&comentario_validacion=ok
+    """
+    try:
+        print(f"=== VALIDACIÓN CON QUERY PARAMS ===")
+        print(f"Usuario: {correo_usuario}, Archivo: {nombre_archivo}")
+        
+        # Importar la función
+        from src.AnalisisQuimicosValidados.application.quimicos_validados_service import (
+            validar_analisis_por_correo_y_archivo
+        )
+        
+        # Validar análisis
+        resultado = validar_analisis_por_correo_y_archivo(
+            correo_usuario, nombre_archivo, comentario_validacion, db
+        )
+        
+        if resultado["success"] and resultado["validados"] > 0:
+            return {"status": "validado"}
+        elif not resultado["success"] and "no tiene análisis pendientes" in resultado["message"]:
+            return {"status": "sin_pendientes"}
+        elif not resultado["success"] and "no encontrado" in resultado["message"]:
+            raise HTTPException(status_code=404, detail=resultado["message"])
+        else:
+            raise HTTPException(status_code=400, detail=resultado["message"])
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"✗ Error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al validar análisis: {str(e)}"
+        )
+        
+
+@router.delete("/usuario/{correo_usuario}/validados/")
+def eliminar_validados_usuario_por_archivo(
+    correo_usuario: str,
+    request_data: dict,  # Recibe datos en el body
+    db: Session = Depends(get_db)
+):
+    """
+    Elimina análisis químicos validados de un usuario por correo Y nombre de archivo específico.
+    Requiere ID de administrador para autorizar la eliminación.
     
     Args:
         correo_usuario (str): Correo electrónico del usuario
+        request_data (dict): Body del request con formato:
+            {
+                "nombre_archivo": "archivo.xlsx",
+                "admin_id": 1,
+                "user_id_objetivo": 1  # Opcional: ID específico del usuario propietario de los registros
+            }
         
     Returns:
         dict: Resultado de la eliminación
@@ -274,24 +362,46 @@ def eliminar_validados_usuario(
         HTTPException: Si ocurre un error durante la eliminación
     """
     try:
-        print(f"=== ENDPOINT DELETE VALIDADOS PARA: {correo_usuario} ===")
+        print(f"=== ENDPOINT DELETE VALIDADOS CON ADMIN PARA: {correo_usuario} ===")
         
-        # Llamar al servicio de eliminación
-        resultado = eliminar_analisis_validados_por_correo(correo_usuario, db)
+        # Obtener datos del request body
+        nombre_archivo = request_data.get("nombre_archivo")
+        admin_id = request_data.get("admin_id")
+        user_id_objetivo = request_data.get("user_id_objetivo")  # Opcional
+        
+        if not nombre_archivo:
+            raise HTTPException(
+                status_code=400,
+                detail="El campo 'nombre_archivo' es requerido en el body del request"
+            )
+            
+        if not admin_id:
+            raise HTTPException(
+                status_code=400,
+                detail="El campo 'admin_id' es requerido para autorizar la eliminación"
+            )
+        
+        print(f"Archivo a eliminar: {nombre_archivo}")
+        print(f"Admin ID: {admin_id}")
+        print(f"User ID objetivo: {user_id_objetivo}")
+        
+        # Llamar al servicio de eliminación con admin
+        resultado = eliminar_analisis_validados_con_admin(
+            correo_usuario, 
+            nombre_archivo, 
+            admin_id,
+            db,
+            user_id_objetivo
+        )
         
         if not resultado["success"]:
-            # Si el usuario no existe, devolver 404
-            if "no encontrado" in resultado["message"]:
-                raise HTTPException(
-                    status_code=404,
-                    detail=resultado["message"]
-                )
+            if "no autorizado" in resultado["message"]:
+                raise HTTPException(status_code=403, detail=resultado["message"])
+            elif "no encontrado" in resultado["message"]:
+                raise HTTPException(status_code=404, detail=resultado["message"])
             else:
-                # Otros errores, devolver 500
-                raise HTTPException(
-                    status_code=500,
-                    detail=resultado["message"]
-                )
+                status_code = 400 if "no tiene análisis validados" in resultado["message"] else 500
+                raise HTTPException(status_code=status_code, detail=resultado["message"])
         
         # Eliminación exitosa
         print(f"✅ Eliminación exitosa: {resultado['eliminados']} registros")
@@ -304,4 +414,72 @@ def eliminar_validados_usuario(
         raise HTTPException(
             status_code=500,
             detail=f"Error al eliminar análisis validados del usuario: {str(e)}"
+        )
+        
+@router.delete("/usuario/{correo_usuario}/pendientes/archivo/")
+def eliminar_pendientes_por_archivo(
+    correo_usuario: str,
+    request_data: dict,
+    db: Session = Depends(get_db)
+):
+    """
+    Elimina análisis pendientes de un usuario por correo y nombre de archivo específico.
+    
+    Body esperado:
+    {
+        "nombre_archivo": "archivo.xlsx"
+    }
+    """
+    try:
+        nombre_archivo = request_data.get("nombre_archivo")
+        
+        if not nombre_archivo:
+            raise HTTPException(
+                status_code=400,
+                detail="El campo 'nombre_archivo' es requerido"
+            )
+        
+        resultado = eliminar_analisis_pendientes_por_archivo(correo_usuario, nombre_archivo, db)
+        
+        if not resultado["success"] and "no encontrado" in resultado["message"]:
+            raise HTTPException(status_code=404, detail=resultado["message"])
+        
+        return resultado
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al eliminar análisis pendientes: {str(e)}"
+        )
+
+@router.get("/usuario/{correo_usuario}/validados/")
+def obtener_validados_por_usuario(
+    correo_usuario: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Obtiene todos los análisis validados de un usuario agrupados por archivo.
+    """
+    try:
+        resultado = obtener_analisis_validados_agrupados_por_usuario(correo_usuario, db)
+        
+        if resultado is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Usuario con correo '{correo_usuario}' no encontrado"
+            )
+        
+        return {
+            "success": True,
+            **resultado
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al obtener análisis validados: {str(e)}"
         )

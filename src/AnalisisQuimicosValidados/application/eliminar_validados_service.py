@@ -237,3 +237,159 @@ def verificar_analisis_validados_usuario(
             "total_validados": 0,
             "error": str(e)
         }
+        
+def eliminar_analisis_validados_con_admin(
+    correo_usuario: str,
+    nombre_archivo: str,
+    admin_id: int,
+    db: Session,
+    user_id_objetivo: int = None
+) -> dict:
+    """
+    Elimina análisis químicos validados con validación de administrador.
+    
+    Args:
+        correo_usuario (str): Correo del usuario (para referencia)
+        nombre_archivo (str): Nombre del archivo a eliminar
+        admin_id (int): ID del administrador que autoriza
+        db (Session): Sesión de base de datos
+        user_id_objetivo (int, optional): ID específico del usuario propietario
+        
+    Returns:
+        dict: Resultado de la operación
+    """
+    try:
+        print(f"=== ELIMINACIÓN CON VALIDACIÓN DE ADMIN ===")
+        print(f"Correo usuario: {correo_usuario}")
+        print(f"Archivo: {nombre_archivo}")
+        print(f"Admin ID: {admin_id}")
+        print(f"User ID objetivo: {user_id_objetivo}")
+        
+        # 1. Validar administrador
+        admin = db.query(Users).filter(Users.ID_user == admin_id).first()
+        if not admin:
+            return {
+                "success": False,
+                "message": f"Administrador con ID {admin_id} no encontrado",
+                "eliminados": 0,
+                "error": "Admin no encontrado"
+            }
+        
+        # Verificar si es admin (asumiendo que hay un campo role o similar)
+        # Ajusta esta validación según tu modelo de usuarios
+        print(f"✓ Admin encontrado: {admin.nombre} {admin.apellido} ({admin.correo})")
+        
+        # 2. Buscar registros por archivo
+        registros_archivo = (
+            db.query(AnalisisQuimicosValidados)
+            .filter(AnalisisQuimicosValidados.nombre_archivo == nombre_archivo.strip())
+            .all()
+        )
+        
+        print(f"📊 Total registros con archivo '{nombre_archivo}': {len(registros_archivo)}")
+        
+        if not registros_archivo:
+            return {
+                "success": False,
+                "message": f"No se encontraron registros con el archivo '{nombre_archivo}'",
+                "usuario": correo_usuario,
+                "archivo": nombre_archivo,
+                "eliminados": 0
+            }
+        
+        # 3. Filtrar por user_id si se especifica
+        registros_a_eliminar = registros_archivo
+        
+        if user_id_objetivo:
+            registros_a_eliminar = [
+                reg for reg in registros_archivo 
+                if reg.user_id_FK == user_id_objetivo
+            ]
+            print(f"🎯 Registros filtrados por user_id {user_id_objetivo}: {len(registros_a_eliminar)}")
+        else:
+            # Mostrar todos los user_ids encontrados
+            user_ids_encontrados = list(set([reg.user_id_FK for reg in registros_archivo]))
+            print(f"🔍 User IDs encontrados en el archivo: {user_ids_encontrados}")
+            
+            # Si hay múltiples usuarios, pedir especificar
+            if len(user_ids_encontrados) > 1:
+                return {
+                    "success": False,
+                    "message": f"El archivo '{nombre_archivo}' contiene registros de múltiples usuarios: {user_ids_encontrados}. Especifica 'user_id_objetivo' en el request.",
+                    "usuario": correo_usuario,
+                    "archivo": nombre_archivo,
+                    "user_ids_encontrados": user_ids_encontrados,
+                    "eliminados": 0
+                }
+        
+        if not registros_a_eliminar:
+            return {
+                "success": False,
+                "message": f"No se encontraron registros del archivo '{nombre_archivo}' para el user_id especificado",
+                "usuario": correo_usuario,
+                "archivo": nombre_archivo,
+                "eliminados": 0
+            }
+        
+        # 4. EXTRAER DATOS ANTES DE ELIMINAR (FIX DEL ERROR)
+        ids_a_eliminar = [reg.id for reg in registros_a_eliminar]
+        user_id_final = user_id_objetivo or registros_a_eliminar[0].user_id_FK
+        
+        # Mostrar información detallada antes de eliminar
+        print(f"🗑️ Registros a eliminar:")
+        for reg in registros_a_eliminar[:5]:  # Mostrar solo los primeros 5
+            print(f"   ID: {reg.id}, user_id_FK: {reg.user_id_FK}, municipio: {reg.municipio}")
+        
+        if len(registros_a_eliminar) > 5:
+            print(f"   ... y {len(registros_a_eliminar) - 5} registros más")
+        
+        # 5. Eliminar registros usando los IDs extraídos
+        registros_eliminados = (
+            db.query(AnalisisQuimicosValidados)
+            .filter(AnalisisQuimicosValidados.id.in_(ids_a_eliminar))
+            .delete(synchronize_session=False)
+        )
+        
+        # 6. Confirmar transacción
+        db.commit()
+        
+        print(f"✅ ELIMINACIÓN COMPLETADA")
+        print(f"   - Archivo: {nombre_archivo}")
+        print(f"   - Registros eliminados: {registros_eliminados}")
+        print(f"   - Autorizado por: {admin.nombre} {admin.apellido} (ID: {admin_id})")
+        
+        return {
+            "success": True,
+            "message": f"Se eliminaron exitosamente {registros_eliminados} registros del archivo '{nombre_archivo}'",
+            "usuario": correo_usuario,
+            "archivo": nombre_archivo,
+            "eliminados": registros_eliminados,
+            "autorizado_por": {
+                "admin_id": admin_id,
+                "admin_nombre": f"{admin.nombre} {admin.apellido}",
+                "admin_correo": admin.correo
+            },
+            "detalles": {
+                "ids_eliminados": ids_a_eliminar[:10],  # Solo los primeros 10 IDs
+                "user_id_objetivo": user_id_final  # USADO LA VARIABLE EXTRAÍDA ANTES DEL DELETE
+            }
+        }
+        
+    except Exception as e:
+        print(f"❌ ERROR CRÍTICO: {str(e)}")
+        print(f"   Traceback: {traceback.format_exc()}")
+        
+        try:
+            db.rollback()
+            print("🔄 Rollback ejecutado")
+        except Exception as rollback_error:
+            print(f"⚠️ Error en rollback: {rollback_error}")
+        
+        return {
+            "success": False,
+            "message": f"Error interno: {str(e)}",
+            "usuario": correo_usuario,
+            "archivo": nombre_archivo,
+            "eliminados": 0,
+            "error": str(e)
+        }
