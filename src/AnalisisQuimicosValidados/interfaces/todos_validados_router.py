@@ -21,7 +21,12 @@ from src.AnalisisQuimicosValidados.application.excel_validados_service import (
     validar_datos_para_excel
 )
 
-# Definir el router
+from src.AnalisisQuimicosValidados.application.eliminar_validados_service import (
+    eliminar_todos_validados_por_correo,
+    verificar_analisis_validados_usuario
+)
+
+# Definir el route
 router = APIRouter(prefix="/todos-los-validados", tags=["Todos los Análisis Quimicos Validados"])
 
 # EXPORTAR el router con el nombre esperado en main.py
@@ -258,4 +263,170 @@ def descargar_excel_filtrado(
         raise HTTPException(
             status_code=500,
             detail=f"Error en test de conexión: {str(e)}"
+        )
+        
+        
+@router.delete("/usuario/{correo_usuario}/eliminar")
+def eliminar_todos_validados_usuario(
+    correo_usuario: str,
+    confirmar: bool = Query(default=False, description="Confirmación requerida para eliminar"),
+    db: Session = Depends(get_db)
+):
+    """
+    Elimina TODOS los análisis químicos validados de un usuario por su correo electrónico.
+    
+    ⚠️  **OPERACIÓN DESTRUCTIVA**: Esta acción es irreversible.
+    
+    Args:
+        correo_usuario (str): Correo electrónico del usuario
+        confirmar (bool): Debe ser True para confirmar la eliminación
+        
+    Returns:
+        Dict: Resultado de la eliminación con detalles del proceso
+        
+    Raises:
+        HTTPException: 
+            - 400: Si falta confirmación o datos inválidos
+            - 404: Si el usuario no existe
+            - 500: Error interno del servidor
+    """
+    try:
+        print(f"=== ENDPOINT: ELIMINAR ANÁLISIS VALIDADOS POR CORREO ===")
+        print(f"Correo usuario: {correo_usuario}")
+        print(f"Confirmación: {confirmar}")
+        
+        # Validación de entrada
+        if not correo_usuario or not correo_usuario.strip():
+            raise HTTPException(
+                status_code=400,
+                detail="El correo del usuario es requerido"
+            )
+        
+        # Validación de confirmación
+        if not confirmar:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": "Confirmación requerida para esta operación destructiva",
+                    "required_parameter": "confirmar=true",
+                    "warning": "Esta operación eliminará TODOS los análisis validados del usuario de forma permanente"
+                }
+            )
+        
+        # Ejecutar eliminación
+        resultado = eliminar_todos_validados_por_correo(correo_usuario, db)
+        
+        # Manejar diferentes tipos de resultado
+        if not resultado["success"]:
+            # Error de usuario no encontrado
+            if "no encontrado" in resultado.get("message", "").lower():
+                raise HTTPException(
+                    status_code=404,
+                    detail={
+                        "message": resultado["message"],
+                        "usuario_buscado": correo_usuario,
+                        "error": resultado.get("error", "Usuario no encontrado")
+                    }
+                )
+            
+            # Otros errores
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "message": resultado["message"],
+                    "error": resultado.get("error", "Error desconocido"),
+                    "usuario": correo_usuario
+                }
+            )
+        
+        # Éxito
+        status_code = 200
+        response_data = {
+            "success": True,
+            "message": resultado["message"],
+            "operation": "DELETE_ALL_VALIDATED_ANALYSES",
+            "usuario": resultado["usuario"],
+            "usuario_id": resultado.get("usuario_id"),
+            "registros_eliminados": resultado["eliminados"],
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        # Agregar detalles adicionales si están disponibles
+        if "detalles" in resultado:
+            response_data["detalles"] = resultado["detalles"]
+        
+        print(f"✅ Eliminación exitosa: {resultado['eliminados']} registros")
+        
+        return response_data
+        
+    except HTTPException:
+        # Re-levantar HTTPException para mantener el código de estado
+        raise
+    except Exception as e:
+        print(f"❌ Error crítico en endpoint: {e}")
+        print(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": f"Error interno del servidor: {str(e)}",
+                "error": str(e),
+                "tipo_error": type(e).__name__,
+                "usuario": correo_usuario
+            }
+        )
+
+
+@router.get("/usuario/{correo_usuario}/verificar")
+def verificar_analisis_validados_usuario_endpoint(
+    correo_usuario: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Verifica cuántos análisis químicos validados tiene un usuario sin eliminarlos.
+    
+    Útil para verificar antes de realizar una eliminación masiva.
+    
+    Args:
+        correo_usuario (str): Correo electrónico del usuario
+        
+    Returns:
+        Dict: Información sobre los análisis validados del usuario
+    """
+    try:
+        print(f"=== ENDPOINT: VERIFICAR ANÁLISIS VALIDADOS ===")
+        print(f"Usuario: {correo_usuario}")
+        
+        if not correo_usuario or not correo_usuario.strip():
+            raise HTTPException(
+                status_code=400,
+                detail="El correo del usuario es requerido"
+            )
+        
+        # Ejecutar verificación
+        resultado = verificar_analisis_validados_usuario(correo_usuario, db)
+        
+        if not resultado["success"]:
+            if "no encontrado" in resultado.get("message", "").lower():
+                raise HTTPException(
+                    status_code=404,
+                    detail=resultado["message"]
+                )
+            raise HTTPException(
+                status_code=500,
+                detail=resultado["message"]
+            )
+        
+        return {
+            **resultado,
+            "timestamp": datetime.now().isoformat(),
+            "operation": "VERIFY_VALIDATED_ANALYSES"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al verificar análisis validados: {str(e)}"
         )
