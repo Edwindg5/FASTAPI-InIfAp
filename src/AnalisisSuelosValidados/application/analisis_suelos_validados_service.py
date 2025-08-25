@@ -10,7 +10,7 @@ class AnalisisSuelosValidadosService:
     def __init__(self, db: Session):
         self.db = db
 
-    def validar_analisis_por_correo(self, correo_usuario: str) -> dict:
+    def validar_analisis_por_correo(self, correo_usuario: str, nombre_archivo: str = None) -> dict:
         """Valida análisis de un usuario específico por su correo"""
         try:
             # Buscar al usuario por correo
@@ -71,6 +71,7 @@ class AnalisisSuelosValidadosService:
                     muestra=analisis.muestra,
                     reemplazo=analisis.reemplazo,
                     nombre_revisor=analisis.nombre_revisor,
+                    nombre_archivo=nombre_archivo,
                     user_id_FK=admin.ID_user,  # Cambiar al ID del administrador
                     fecha_validacion=func.now(),
                     fecha_creacion=analisis.fecha_creacion

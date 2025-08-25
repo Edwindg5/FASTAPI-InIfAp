@@ -1,13 +1,17 @@
 # src/AnalisisQuimicosPendientes/interfaces/analisis_quimicos_router.py
+from datetime import datetime
 from fastapi import APIRouter, UploadFile, Depends, Form, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from src.core.database import get_db
 from src.AnalisisQuimicosPendientes.application.analisis_quimicos_service import procesar_excel_y_guardar
 from src.AnalisisQuimicosPendientes.application.usuario_service import (
+    generar_excel_usuario_por_archivo,
     obtener_usuarios_con_datos_pendientes,
     generar_excel_usuario,
-    obtener_info_usuario_para_descarga
+    generar_excel_usuario_por_archivo,
+    obtener_info_usuario_para_descarga,
+    
 )
 from src.AnalisisQuimicosPendientes.infrastructure.analisis_quimicos_model import AnalisisQuimicosPendientes
 from src.Users.infrastructure.users_model import Users
@@ -372,7 +376,7 @@ async def verificar_y_limpiar_comentario_invalido(
             detail=f"Error interno del servidor: {str(e)}"
         )
 
-# ======================= ENDPOINT PARA USUARIOS CON DATOS PENDIENTES =======================
+# ======================= ENDPOINT PAR USUARIOS CON DATOS PENDIENTES =======================
 
 @router.get("/usuarios-con-datos-pendientes/", response_model=ListaUsuariosResponse)
 async def obtener_usuarios_con_datos_pendientes_endpoint(
@@ -426,17 +430,19 @@ async def obtener_usuarios_con_datos_pendientes_endpoint(
 @router.get("/descargar-datos-usuario/{user_id}")
 async def descargar_datos_usuario_excel(
     user_id: int,
+    nombre_archivo: str = None,  # Parámetro query opcional
     db: Session = Depends(get_db)
 ):
     """
-    Descarga un archivo Excel con todos los datos de análisis químicos de un usuario específico.
+    Descarga un archivo Excel con datos de análisis químicos de un usuario específico.
     
     Args:
         user_id: ID del usuario del cual descargar los datos
+        nombre_archivo: (Opcional) Nombre específico del archivo a filtrar
         db: Sesión de base de datos
     
     Returns:
-        Archivo Excel con todos los registros del usuario
+        Archivo Excel con los registros del usuario (todos o filtrados por archivo)
     """
     try:
         # 1. Verificar que el usuario existe
@@ -447,26 +453,45 @@ async def descargar_datos_usuario_excel(
                 detail=f"Usuario con ID {user_id} no encontrado"
             )
         
-        # 2. Verificar que el usuario tiene registros
-        if info_usuario["total_registros"] == 0:
-            raise HTTPException(
-                status_code=404,
-                detail=f"El usuario '{info_usuario['nombre_completo']}' no tiene registros de análisis químicos"
-            )
+        # 2. Si se especifica nombre_archivo, usar la función filtrada
+        if nombre_archivo:
+            # Verificar que el archivo existe para este usuario
+            archivo_existe = db.query(AnalisisQuimicosPendientes).filter(
+                AnalisisQuimicosPendientes.user_id_FK == user_id,
+                AnalisisQuimicosPendientes.nombre_archivo == nombre_archivo
+            ).first()
+            
+            if not archivo_existe:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No se encontraron registros para el archivo '{nombre_archivo}' del usuario especificado"
+                )
+            
+            # Generar Excel filtrado por archivo
+            excel_bytes = generar_excel_usuario_por_archivo(user_id, nombre_archivo, db)
+            nombre_descarga = f"analisis_quimicos_{info_usuario['nombre_completo'].lower().replace(' ', '_')}_{nombre_archivo.replace('.xlsx', '')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        else:
+            # 3. Verificar que el usuario tiene registros (modo original - todos los archivos)
+            if info_usuario["total_registros"] == 0:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"El usuario '{info_usuario['nombre_completo']}' no tiene registros de análisis químicos"
+                )
+            
+            # Generar Excel con todos los datos del usuario
+            excel_bytes = generar_excel_usuario(user_id, db)
+            nombre_descarga = info_usuario["nombre_archivo"]
         
-        # 3. Generar el archivo Excel
-        excel_bytes = generar_excel_usuario(user_id, db)
+        # 4. Validar que se generó el archivo
         if not excel_bytes:
             raise HTTPException(
                 status_code=500,
                 detail="Error al generar el archivo Excel"
             )
         
-        # 4. Crear respuesta de descarga
-        excel_stream = io.BytesIO(excel_bytes)
-        
+        # 5. Crear respuesta de descarga
         headers = {
-            'Content-Disposition': f'attachment; filename="{info_usuario["nombre_archivo"]}"',
+            'Content-Disposition': f'attachment; filename="{nombre_descarga}"',
             'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         }
         

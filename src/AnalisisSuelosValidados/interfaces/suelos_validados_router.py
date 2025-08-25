@@ -19,6 +19,7 @@ router = APIRouter(
 # Schemas
 class ValidarPorCorreoRequest(BaseModel):
     correo_usuario: EmailStr
+    nombre_archivo: str = None
 
 class ValidarPorCorreoResponse(BaseModel):
     success: bool
@@ -52,7 +53,7 @@ def validar_analisis_por_correo(
     Mueve los datos a la tabla validados y los elimina de pendientes.
     """
     service = AnalisisSuelosValidadosService(db)
-    resultado = service.validar_analisis_por_correo(request.correo_usuario)
+    resultado = service.validar_analisis_por_correo(request.correo_usuario, request.nombre_archivo)
     
     if not resultado["success"]:
         raise HTTPException(

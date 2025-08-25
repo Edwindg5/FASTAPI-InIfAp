@@ -40,6 +40,7 @@ class AnalisisSuelosValidados(Base):
     muestra = Column(String(50), nullable=True)
     reemplazo = Column(String(50), nullable=True)
     nombre_revisor = Column(String(150), nullable=True)
+    nombre_archivo = Column(String(255), nullable=True)
     fecha_validacion = Column(DateTime, default=func.current_timestamp())
     user_id_FK = Column(Integer, ForeignKey("users.ID_user"), nullable=True)
     fecha_creacion = Column(DateTime, default=func.current_timestamp())
