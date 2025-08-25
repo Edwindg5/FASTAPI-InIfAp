@@ -96,20 +96,6 @@ class ComentarioInvalidoResponse(BaseModel):
     comentario_invalido: str
     registros_afectados: int
     fecha_comentario: datetime
-
-class VerificarComentariosRequest(BaseModel):
-    """Schema para verificar comentarios"""
-    correo_usuario: EmailStr
-    accion: Literal["verificar", "recibido"]
-
-class VerificarComentariosResponse(BaseModel):
-    """Schema de respuesta para verificar comentarios"""
-    correo_usuario: str
-    tiene_comentarios: bool
-    total_comentarios: int
-    comentarios: List[str] = []
-    message: str
-    registros_eliminados: Optional[int] = None
     
 class EstadisticasGeneralesResponse(BaseModel):
     """Schema para estadísticas generales del sistema"""
@@ -193,13 +179,3 @@ class AnalisisValidadosPorCorreoResponse(BaseModel):
     ultimo_analisis_fecha: Optional[datetime] = None
     message: str
 
-class EstadisticasValidadosResponse(BaseModel):
-    """Schema para estadísticas de análisis validados"""
-    total_analisis_validados: int
-    total_usuarios_con_validados: int
-    municipios_mas_frecuentes: List[Dict[str, Any]] = []
-    usuarios_con_mas_validados: List[Dict[str, Any]] = []
-    fecha_consulta: datetime
-    
-    class Config:
-        from_attributes = True

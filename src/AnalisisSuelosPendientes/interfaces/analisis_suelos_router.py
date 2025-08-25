@@ -18,13 +18,9 @@ from src.AnalisisSuelosPendientes.application.analisis_suelos_schemas import (
     UploadResponse,
     ComentarioInvalidoCreate,
     ComentarioInvalidoResponse,
-    VerificarComentariosRequest,
-    VerificarComentariosResponse,
     ResumenUsuariosPendientesResponse,
-    EstadisticasGeneralesResponse,
     ResumenUsuariosValidadosResponse,
     AnalisisValidadosPorCorreoResponse,
-    EstadisticasValidadosResponse
 )
 from fastapi.responses import StreamingResponse
 
@@ -67,43 +63,7 @@ async def upload_excel_analisis_suelos(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al procesar el archivo: {str(e)}")
 
-@router.get("/", response_model=List[AnalisisSuelosResponse])
-def get_analisis_suelos_pendientes(
-    skip: int = Query(0, ge=0, description="Número de registros a omitir"),
-    limit: int = Query(100, ge=1, le=1000, description="Límite de registros a retornar"),
-    db: Session = Depends(get_db)
-):
-    """
-    Obtiene la lista de análisis de suelos pendientes
-    """
-    analisis_list = AnalisisSuelosService.get_all_analisis_suelos(db, skip=skip, limit=limit)
-    return analisis_list
 
-# NUEVO ENDPOINT - Solo usuarios con estatus pendiente
-@router.get("/usuario/{user_id}/pendientes", response_model=List[AnalisisSuelosResponse])
-def get_analisis_suelos_pendientes_by_user(
-    user_id: int,
-    skip: int = Query(0, ge=0, description="Número de registros a omitir"),
-    limit: int = Query(100, ge=1, le=1000, description="Límite de registros a retornar"),
-    db: Session = Depends(get_db)
-):
-    """
-    Obtiene solo los análisis de suelos PENDIENTES de un usuario específico
-    """
-    analisis_list = AnalisisSuelosService.get_analisis_suelos_pendientes_by_user(
-        db, user_id=user_id, skip=skip, limit=limit
-    )
-    
-    if not analisis_list:
-        raise HTTPException(
-            status_code=404, 
-            detail=f"No se encontraron análisis de suelos pendientes para el usuario {user_id}"
-        )
-    
-    return analisis_list
-
-
-# NUEVO ENDPOINT - Todos los usuarios con análisis pendientes
 @router.post("/comentario-invalido", response_model=ComentarioInvalidoResponse)
 def crear_comentario_invalido(
     comentario_data: ComentarioInvalidoCreate,
@@ -135,110 +95,6 @@ def crear_comentario_invalido(
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
-
-
-# NUEVO ENDPOINT - Verificar y procesar comentarios inválidos
-@router.post("/comentarios/verificar", response_model=VerificarComentariosResponse)
-def verificar_comentarios_invalidos(
-    request: VerificarComentariosRequest,
-    db: Session = Depends(get_db)
-):
-    """
-    Verifica si un usuario tiene comentarios inválidos y permite marcarlos como recibidos.
-    
-    **Acciones disponibles:**
-    - **'verificar'**: Solo verifica si hay comentarios inválidos y los muestra
-    - **'recibido'**: Marca los comentarios como recibidos y elimina AUTOMÁTICAMENTE todos los registros con comentarios
-    
-    **Importante:** 
-    - La acción 'recibido' eliminará permanentemente todos los análisis de suelos que tengan comentarios inválidos
-    - Esta acción no se puede deshacer
-    
-    **Parámetros:**
-    - correo_usuario: Correo del usuario a verificar
-    - accion: 'verificar' o 'recibido'
-    """
-    try:
-        resultado = AnalisisSuelosService.verificar_y_procesar_comentarios(
-            db=db,
-            correo_usuario=request.correo_usuario,
-            accion=request.accion
-        )
-        
-        return VerificarComentariosResponse(**resultado)
-        
-    except ValueError as ve:
-        raise HTTPException(status_code=400, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
-
-
-# ENDPOINT ADICIONAL - Obtener comentarios por correo (solo verificar, más simple)
-@router.get("/comentarios/{correo_usuario}", response_model=VerificarComentariosResponse)
-def obtener_comentarios_invalidos(
-    correo_usuario: str,
-    db: Session = Depends(get_db)
-):
-    """
-    Endpoint simplificado para solo verificar comentarios inválidos de un usuario.
-    
-    **Uso:** GET /analisis-suelos-pendientes/comentarios/usuario@ejemplo.com
-    
-    **Parámetros:**
-    - correo_usuario: Correo del usuario a verificar
-    
-    **Retorna:**
-    - Lista de comentarios inválidos del usuario
-    - Total de registros afectados
-    - Estado de los comentarios
-    """
-    try:
-        resultado = AnalisisSuelosService.verificar_y_procesar_comentarios(
-            db=db,
-            correo_usuario=correo_usuario,
-            accion="verificar"
-        )
-        
-        return VerificarComentariosResponse(**resultado)
-        
-    except ValueError as ve:
-        raise HTTPException(status_code=404, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
-
-
-# ENDPOINT ADICIONAL - Eliminar comentarios por correo (acción directa)
-@router.delete("/comentarios/{correo_usuario}", response_model=VerificarComentariosResponse)
-def eliminar_comentarios_invalidos(
-    correo_usuario: str,
-    db: Session = Depends(get_db)
-):
-    """
-    Endpoint directo para eliminar comentarios inválidos y sus registros asociados.
-    
-    **Uso:** DELETE /analisis-suelos-pendientes/comentarios/usuario@ejemplo.com
-    
-    **ADVERTENCIA:** 
-    - Este endpoint elimina PERMANENTEMENTE todos los registros con comentarios inválidos
-    - La acción no se puede deshacer
-    
-    **Parámetros:**
-    - correo_usuario: Correo del usuario cuyos comentarios se eliminarán
-    """
-    try:
-        resultado = AnalisisSuelosService.verificar_y_procesar_comentarios(
-            db=db,
-            correo_usuario=correo_usuario,
-            accion="recibido"
-        )
-        
-        return VerificarComentariosResponse(**resultado)
-        
-    except ValueError as ve:
-        raise HTTPException(status_code=404, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
-    
     
 @router.get("/usuarios-con-pendientes", response_model=ResumenUsuariosPendientesResponse)
 def obtener_usuarios_con_pendientes(
@@ -261,9 +117,6 @@ def obtener_usuarios_con_pendientes(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error obteniendo usuarios con pendientes: {str(e)}")
-
-
-
 
 
 @router.get("/descargar-excel/{user_id}")
@@ -445,87 +298,5 @@ def obtener_validados_por_correo(
         raise HTTPException(status_code=404, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error obteniendo análisis validados: {str(e)}")
-
-
-@router.get("/estadisticas-validados", response_model=EstadisticasValidadosResponse)
-def obtener_estadisticas_validados(
-    db: Session = Depends(get_db)
-):
-    """
-    Obtiene estadísticas generales del sistema de análisis de suelos validados.
-    
-    **Incluye:**
-    - Total de análisis validados en el sistema
-    - Total de usuarios con análisis validados
-    - Top 10 municipios más frecuentes en validados
-    - Top 10 usuarios con más análisis validados
-    - Fecha de la consulta
-    
-    **Útil para:**
-    - Dashboard de administración
-    - Reportes ejecutivos
-    - Seguimiento de productividad
-    - Análisis de tendencias geográficas
-    - Identificar usuarios más activos
-    """
-    try:
-        estadisticas = UsuariosValidadosService.get_estadisticas_validados(db)
-        return EstadisticasValidadosResponse(**estadisticas)
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error obteniendo estadísticas de validados: {str(e)}")
-
-
-# ENDPOINT ADICIONAL - Verificar si un usuario tiene validados
-@router.get("/verificar-validados/{correo_usuario}")
-def verificar_usuario_tiene_validados(
-    correo_usuario: str,
-    db: Session = Depends(get_db)
-):
-    """
-    Endpoint simple para verificar si un usuario tiene análisis validados.
-    
-    **Uso:** Para validaciones rápidas o componentes frontend
-    
-    **Parámetros:**
-    - correo_usuario: Correo del usuario a verificar
-    
-    **Retorna:**
-    - tiene_validados: boolean
-    - total_validados: número de registros
-    - user_id: ID del usuario
-    - message: mensaje descriptivo
-    """
-    try:
-        # Verificar que el usuario exista
-        from src.Users.infrastructure.users_model import Users
-        usuario = db.query(Users).filter(Users.correo == correo_usuario).first()
-        
-        if not usuario:
-            raise HTTPException(status_code=404, detail=f"Usuario con correo {correo_usuario} no encontrado")
-        
-        total_validados = db.query(AnalisisSuelosPendientes).filter(
-            AnalisisSuelosPendientes.user_id_FK == usuario.ID_user,
-            AnalisisSuelosPendientes.estatus == 'validado'
-        ).count()
-        
-        tiene_validados = total_validados > 0
-        
-        mensaje = f"Usuario {correo_usuario} {'tiene' if tiene_validados else 'no tiene'} análisis validados"
-        if tiene_validados:
-            mensaje += f" (Total: {total_validados})"
-        
-        return {
-            "correo_usuario": correo_usuario,
-            "user_id": usuario.ID_user,
-            "tiene_validados": tiene_validados,
-            "total_validados": total_validados,
-            "message": mensaje
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error verificando validados: {str(e)}")
 
 
