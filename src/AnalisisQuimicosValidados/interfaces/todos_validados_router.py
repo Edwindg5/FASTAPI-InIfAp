@@ -92,142 +92,114 @@ def descargar_excel_todos_validados(db: Session = Depends(get_db)):
 
 
 @router.get("/excel/filtrado/")
-def descargar_excel_filtrado(
-    municipio: Optional[str] = Query(default=None),
-    fecha_desde: Optional[str] = Query(default=None),
-    fecha_hasta: Optional[str] = Query(default=None),
-    usuario_validador_id: Optional[int] = Query(default=None),
+def descargar_excel_filtrado_por_usuario_archivo(
+    user_id: int = Query(..., description="ID del usuario propietario de los análisis"),
+    nombre_archivo: str = Query(..., description="Nombre exacto del archivo a descargar"),
     db: Session = Depends(get_db)
 ):
     """
-    Descarga análisis validados con filtros aplicados en formato Excel.
+    Descarga análisis validados de un usuario específico y archivo específico en formato Excel.
     
     Args:
-        municipio (Optional[str]): Filtro por municipio
-        fecha_desde (Optional[str]): Fecha inicio (YYYY-MM-DD)
-        fecha_hasta (Optional[str]): Fecha fin (YYYY-MM-DD)  
-        usuario_validador_id (Optional[int]): ID del usuario validador
+        user_id (int): ID del usuario propietario de los análisis
+        nombre_archivo (str): Nombre exacto del archivo a descargar
         
     Returns:
-        StreamingResponse: Archivo Excel filtrado
+        StreamingResponse: Archivo Excel con los análisis del usuario y archivo especificado
+        
+    Raises:
+        HTTPException:
+            - 400: Si faltan parámetros requeridos
+            - 404: Si no se encuentran análisis con los criterios especificados
+            - 500: Error interno del servidor
     """
     try:
-        print("=== DESCARGA EXCEL: FILTRADO ===")
+        print("=== DESCARGA EXCEL: FILTRADO POR USUARIO Y ARCHIVO ===")
+        print(f"User ID: {user_id}")
+        print(f"Nombre archivo: {nombre_archivo}")
         
-        # Convertir fechas
-        fecha_desde_dt = None
-        fecha_hasta_dt = None
-        
-        if fecha_desde:
-            try:
-                fecha_desde_dt = datetime.strptime(fecha_desde, "%Y-%m-%d")
-            except ValueError:
-                raise HTTPException(status_code=400, detail="Formato de fecha_desde inválido")
-        
-        if fecha_hasta:
-            try:
-                fecha_hasta_dt = datetime.strptime(fecha_hasta, "%Y-%m-%d")
-            except ValueError:
-                raise HTTPException(status_code=400, detail="Formato de fecha_hasta inválido")
-        
-        # Verificar que hay resultados con los filtros
-        verificacion = buscar_validados_por_filtros(
-            db, municipio, fecha_desde_dt, fecha_hasta_dt, 
-            usuario_validador_id, limit=1, offset=0
-        )
-        
-        if not verificacion["success"]:
-            raise HTTPException(status_code=500, detail="Error verificando filtros")
-        
-        if verificacion["total_encontrados"] == 0:
+        # Validaciones de entrada
+        if not user_id or user_id <= 0:
             raise HTTPException(
-                status_code=404,
-                detail="No se encontraron análisis con los filtros aplicados"
+                status_code=400,
+                detail="El user_id es requerido y debe ser mayor a 0"
+            )
+            
+        if not nombre_archivo or not nombre_archivo.strip():
+            raise HTTPException(
+                status_code=400,
+                detail="El nombre_archivo es requerido y no puede estar vacío"
             )
         
-        print(f"✓ Filtros válidos: {verificacion['total_encontrados']} registros encontrados")
-        
-        # Generar Excel
-        buffer_excel = generar_excel_validados_filtrado(
-            db, municipio, fecha_desde_dt, fecha_hasta_dt, usuario_validador_id
+        # Importar el nuevo servicio
+        from src.AnalisisQuimicosValidados.application.excel_usuario_archivo_service import (
+            generar_excel_por_usuario_archivo,
+            verificar_datos_usuario_archivo,
+            obtener_nombre_archivo_descarga
         )
+        
+        # Verificar que existan datos con los criterios especificados
+        verificacion = verificar_datos_usuario_archivo(db, user_id, nombre_archivo.strip())
+        
+        if not verificacion["success"]:
+            if "no encontrado" in verificacion.get("message", "").lower():
+                raise HTTPException(
+                    status_code=404,
+                    detail={
+                        "message": verificacion["message"],
+                        "user_id": user_id,
+                        "nombre_archivo": nombre_archivo,
+                        "detalles": verificacion.get("detalles", {})
+                    }
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Error verificando datos: {verificacion['message']}"
+                )
+        
+        print(f"✓ Datos encontrados: {verificacion['total_registros']} análisis")
+        print(f"✓ Usuario: {verificacion.get('usuario_info', {}).get('nombre', 'N/A')}")
+        
+        # Generar archivo Excel
+        buffer_excel = generar_excel_por_usuario_archivo(db, user_id, nombre_archivo.strip())
         
         if buffer_excel is None:
             raise HTTPException(
                 status_code=500,
-                detail="Error al generar el archivo Excel filtrado"
+                detail="Error al generar el archivo Excel"
             )
         
-        # Nombre del archivo
-        filtros = {
-            "municipio": municipio,
-            "fecha_desde": fecha_desde,
-            "fecha_hasta": fecha_hasta,
-            "usuario_validador_id": usuario_validador_id
-        }
-        nombre_archivo = obtener_nombre_archivo_validados("filtrado", filtros=filtros)
+        # Obtener nombre del archivo para descarga
+        nombre_descarga = obtener_nombre_archivo_descarga(
+            verificacion.get("usuario_info", {}),
+            nombre_archivo.strip()
+        )
         
-        print(f"✅ Archivo Excel filtrado generado: {nombre_archivo}")
+        print(f"✅ Archivo Excel generado exitosamente: {nombre_descarga}")
         
         return StreamingResponse(
-            buffer_excel,  # Primer parámetro posicional, NO usar 'io='
+            buffer_excel,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={
-                "Content-Disposition": f"attachment; filename={nombre_archivo}"
+                "Content-Disposition": f"attachment; filename={nombre_descarga}"
             }
         )
         
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"❌ Error crítico: {e}")
+        print(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=500,
-            detail=f"Error al generar Excel filtrado: {str(e)}"
+            detail={
+                "message": f"Error al generar Excel: {str(e)}",
+                "error": str(e),
+                "user_id": user_id,
+                "nombre_archivo": nombre_archivo
+            }
         )
-
-
-
-    """
-    Endpoint de prueba para verificar la conexión y funcionalidad básica.
-    
-    Returns:
-        Dict: Estado de la conexión y funcionamiento
-    """
-    try:
-        print("=== TEST: CONEXIÓN VALIDADOS ===")
-        
-        # Importar modelo para prueba
-        from src.AnalisisQuimicosValidados.infrastructure.analisis_quimicos_validados_model import (
-            AnalisisQuimicosValidados,
-        )
-        
-        # Hacer una consulta simple
-        count = db.query(AnalisisQuimicosValidados).count()
-        
-        # Obtener un registro de ejemplo
-        ejemplo = db.query(AnalisisQuimicosValidados).first()
-        
-        return {
-            "success": True,
-            "message": "Conexión exitosa",
-            "test_results": {
-                "total_registros_en_bd": count,
-                "tiene_datos": count > 0,
-                "ejemplo_disponible": ejemplo is not None,
-                "ejemplo_id": ejemplo.id if ejemplo else None,
-                "servicios_funcionando": True
-            },
-            "timestamp": datetime.now().isoformat()
-        }
-        
-    except Exception as e:
-        print(f"❌ Error en test: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error en test de conexión: {str(e)}"
-        )
-        
         
 @router.delete("/usuario/{correo_usuario}/eliminar")
 def eliminar_todos_validados_usuario(

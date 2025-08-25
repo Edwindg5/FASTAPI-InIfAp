@@ -3,6 +3,8 @@ from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime
 from decimal import Decimal
+from typing import  Dict, Any
+from datetime import datetime
 
 class AnalisisQuimicoValidadoBase(BaseModel):
     municipio_id_FK: Optional[int] = None
@@ -283,4 +285,63 @@ class ListadoValidadosAgrupadosResponse(BaseModel):
     message: str
     data: List[AnalisisValidadoAgrupadoResponse]
     total: int
+    timestamp: str
+    
+
+
+
+class ExcelUsuarioArchivoRequest(BaseModel):
+    """
+    Schema para el request de descarga de Excel por usuario y archivo
+    """
+    user_id: int = Field(..., gt=0, description="ID del usuario (debe ser mayor a 0)")
+    nombre_archivo: str = Field(..., min_length=1, description="Nombre del archivo (no puede estar vacío)")
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "user_id": 1,
+                "nombre_archivo": "datos_analisis.xlsx"
+            }
+        }
+
+class ExcelUsuarioArchivoResponse(BaseModel):
+    """
+    Schema para la respuesta de verificación antes de la descarga
+    """
+    success: bool
+    message: str
+    total_registros: int
+    usuario_info: Optional[Dict[str, Any]] = None
+    archivo_info: Optional[Dict[str, Any]] = None
+    fechas_info: Optional[Dict[str, Any]] = None
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "success": True,
+                "message": "Se encontraron 25 análisis validados",
+                "total_registros": 25,
+                "usuario_info": {
+                    "user_id": 1,
+                    "correo": "usuario@example.com",
+                    "nombre": "Juan Pérez"
+                },
+                "archivo_info": {
+                    "nombre_archivo": "datos_analisis.xlsx",
+                    "total_analisis": 25
+                }
+            }
+        }
+
+class VerificarUsuarioArchivoResponse(BaseModel):
+    """
+    Schema para endpoint de verificación sin descarga
+    """
+    success: bool
+    message: str
+    total_registros: int
+    detalles: Optional[Dict[str, Any]] = None
+    usuario_info: Optional[Dict[str, Any]] = None
+    archivo_info: Optional[Dict[str, Any]] = None
     timestamp: str
