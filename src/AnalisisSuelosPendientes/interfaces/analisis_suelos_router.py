@@ -19,8 +19,8 @@ from src.AnalisisSuelosPendientes.application.analisis_suelos_schemas import (
     ComentarioInvalidoCreate,
     ComentarioInvalidoResponse,
     ResumenUsuariosPendientesResponse,
-    ResumenUsuariosValidadosResponse,
-    AnalisisValidadosPorCorreoResponse,
+    ResumenUsuariosValidadosSimpleResponse,
+    
 )
 from fastapi.responses import StreamingResponse
 
@@ -234,70 +234,28 @@ def eliminar_analisis_pendientes_por_usuario(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
     
-@router.get("/usuarios-con-validados", response_model=ResumenUsuariosValidadosResponse)
+@router.get("/usuarios-con-validados", response_model=ResumenUsuariosValidadosSimpleResponse)
 def obtener_usuarios_con_validados(
     db: Session = Depends(get_db)
 ):
     """
-    Obtiene todos los usuarios que tienen análisis de suelos validados.
+    Obtiene todos los usuarios que tienen análisis de suelos validados en formato simplificado.
     
     **Retorna:**
-    - Lista completa de usuarios con análisis validados
-    - Total de registros validados por usuario
-    - Municipios involucrados por usuario
-    - Fecha del último análisis validado de cada usuario
+    - Lista simplificada con: nombre_usuario, estatus, fecha, nombre_archivo
+    - Una entrada por cada archivo validado (no agrupado por usuario)
+    - Ordenado por nombre de usuario y nombre de archivo
     
-    **Ordenado por:** Usuarios con más registros validados primero
-    
-    **Diferencias con pendientes:**
-    - Solo incluye análisis con estatus 'validado'
-    - Muestra usuarios que ya completaron el proceso de validación
-    - Útil para reportes y seguimiento de análisis completados
+    **Formato de respuesta:**
+    - nombre_usuario: Nombre completo del usuario
+    - estatus: Siempre 'validado'
+    - fecha: Fecha de validación del archivo
+    - nombre_archivo: Nombre del archivo Excel procesado
     """
     try:
         resultado = UsuariosValidadosService.get_usuarios_con_validados(db)
-        return ResumenUsuariosValidadosResponse(**resultado)
+        return ResumenUsuariosValidadosSimpleResponse(**resultado)
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error obteniendo usuarios con validados: {str(e)}")
-
-
-@router.get("/validados-por-correo/{correo_usuario}", response_model=AnalisisValidadosPorCorreoResponse)
-def obtener_validados_por_correo(
-    correo_usuario: str,
-    db: Session = Depends(get_db)
-):
-    """
-    Obtiene todos los análisis validados de un usuario específico usando su correo electrónico.
-    
-    **Parámetros:**
-    - correo_usuario: Correo electrónico del usuario a consultar
-    
-    **Retorna:**
-    - Información completa del usuario
-    - Lista detallada de todos sus análisis validados
-    - Municipios donde tiene análisis validados
-    - Fecha del análisis validado más reciente
-    - Detalles de cada análisis (ID, fecha, municipio, cultivo, técnico, etc.)
-    
-    **Casos de uso:**
-    - Consultar historial de validaciones de un usuario
-    - Verificar análisis completados por usuario
-    - Generar reportes específicos por usuario
-    - Seguimiento de trabajo completado
-    
-    **Respuesta cuando no hay validados:**
-    - Retorna información del usuario con listas vacías
-    - Message explicativo de que no tiene validados
-    - total_validados = 0
-    """
-    try:
-        resultado = UsuariosValidadosService.get_analisis_validados_por_correo(db, correo_usuario)
-        return AnalisisValidadosPorCorreoResponse(**resultado)
-        
-    except ValueError as ve:
-        raise HTTPException(status_code=404, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error obteniendo análisis validados: {str(e)}")
-
 

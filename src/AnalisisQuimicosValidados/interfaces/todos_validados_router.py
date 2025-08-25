@@ -399,15 +399,14 @@ def listar_todos_validados(
     db: Session = Depends(get_db)
 ):
     """
-    Lista TODOS los análisis químicos validados con información básica (SIN LÍMITE).
-    
-    ⚠️  PRECAUCIÓN: Este endpoint retorna todos los registros sin paginación.
+    Lista TODOS los análisis químicos validados AGRUPADOS por archivo.
+    Muestra un registro por archivo con la cantidad de análisis que contiene.
     
     Returns:
-        Dict: Lista completa de análisis validados con información del usuario
+        Dict: Lista de archivos validados con cantidad de análisis
     """
     try:
-        print("=== ENDPOINT: LISTAR TODOS LOS VALIDADOS (SIN LÍMITE) ===")
+        print("=== ENDPOINT: LISTAR TODOS LOS VALIDADOS AGRUPADOS ===")
         
         # Importar servicio
         from src.AnalisisQuimicosValidados.application.listar_validados_service import (
@@ -424,7 +423,7 @@ def listar_todos_validados(
         
         return {
             "success": True,
-            "message": "Análisis validados obtenidos exitosamente",
+            "message": "Archivos validados obtenidos exitosamente",
             "data": resultado["data"],
             "total": resultado["total"],
             "timestamp": datetime.now().isoformat()
@@ -438,6 +437,3 @@ def listar_todos_validados(
             status_code=500,
             detail=f"Error al obtener análisis validados: {str(e)}"
         )
-
-
-    correo_usuario: str = Query(..., description="Correo del usuario"),

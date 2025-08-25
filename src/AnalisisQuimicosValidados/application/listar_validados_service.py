@@ -11,66 +11,77 @@ from datetime import datetime
 
 def listar_todos_validados_con_usuario(db: Session) -> Dict[str, Any]:
     """
-    Lista todos los análisis validados con información del usuario (SIN LÍMITE).
+    Lista todos los análisis validados AGRUPADOS por usuario y nombre_archivo.
+    Muestra un registro por archivo con la cantidad de análisis que contiene.
     
     Args:
         db: Sesión de base de datos
         
     Returns:
-        Dict con los análisis validados y información del usuario
+        Dict con los análisis validados agrupados por archivo
     """
     try:
-        print("📋 Listando TODOS los validados (sin límite)")
+        print("📋 Listando validados AGRUPADOS por archivo")
         
         # Importar modelos
         from src.AnalisisQuimicosValidados.infrastructure.analisis_quimicos_validados_model import (
             AnalisisQuimicosValidados
         )
         from src.Users.infrastructure.users_model import Users
+        from sqlalchemy import func, desc
         
-        # Consulta con JOIN para obtener información del usuario
+        # Consulta agrupada por usuario y nombre_archivo
         query = db.query(
-            AnalisisQuimicosValidados.id,
+            Users.correo.label('correo_usuario'),
+            Users.nombre.label('nombre_usuario'),
             AnalisisQuimicosValidados.nombre_archivo,
-            AnalisisQuimicosValidados.fecha_validacion,
-            AnalisisQuimicosValidados.fecha_creacion,
-            Users.correo,  # CORREGIDO: es 'correo' no 'correo_usuario'
-            Users.nombre
+            func.count(AnalisisQuimicosValidados.id).label('cantidad_analisis'),
+            func.min(AnalisisQuimicosValidados.fecha_validacion).label('primera_validacion'),
+            func.max(AnalisisQuimicosValidados.fecha_validacion).label('ultima_validacion'),
+            func.min(AnalisisQuimicosValidados.fecha_creacion).label('primera_creacion'),
+            func.max(AnalisisQuimicosValidados.fecha_creacion).label('ultima_creacion')
         ).join(
             Users, 
             AnalisisQuimicosValidados.user_id_FK == Users.ID_user
+        ).group_by(
+            Users.correo,
+            Users.nombre,
+            AnalisisQuimicosValidados.nombre_archivo
         ).order_by(
-            AnalisisQuimicosValidados.fecha_validacion.desc()
+            desc('ultima_validacion')
         )
         
-        # Obtener TODOS los resultados (sin límite)
         resultados = query.all()
         total = len(resultados)
         
-        # Formatear datos
+        # Formatear datos agrupados
         data = []
         for resultado in resultados:
             data.append({
-                "id": resultado.id,
-                "nombre_usuario": resultado.nombre or "Sin nombre",
-                "correo_usuario": resultado.correo,  # CORREGIDO: usar el campo correcto
-                "estatus": "Validado",  # Todos están validados en esta tabla
+                "nombre_usuario": resultado.nombre_usuario or "Sin nombre",
+                "correo_usuario": resultado.correo_usuario,
                 "nombre_archivo": resultado.nombre_archivo or "Sin archivo",
-                "fecha_validacion": resultado.fecha_validacion.strftime("%Y-%m-%d %H:%M:%S") if resultado.fecha_validacion else None,
-                "fecha_creacion": resultado.fecha_creacion.strftime("%Y-%m-%d %H:%M:%S") if resultado.fecha_creacion else None
+                "cantidad_analisis": resultado.cantidad_analisis,
+                "estatus": "Validado",
+                "fecha_validacion": resultado.ultima_validacion.strftime("%Y-%m-%d %H:%M:%S") if resultado.ultima_validacion else None,
+                "fecha_creacion": resultado.primera_creacion.strftime("%Y-%m-%d %H:%M:%S") if resultado.primera_creacion else None,
+                "rango_fechas": {
+                    "primera_validacion": resultado.primera_validacion.strftime("%Y-%m-%d %H:%M:%S") if resultado.primera_validacion else None,
+                    "ultima_validacion": resultado.ultima_validacion.strftime("%Y-%m-%d %H:%M:%S") if resultado.ultima_validacion else None
+                }
             })
         
-        print(f"✅ Encontrados {total} registros totales")
+        print(f"✅ Encontrados {total} archivos agrupados")
         
         return {
             "success": True,
             "data": data,
             "total": total,
-            "message": f"Se obtuvieron {total} análisis validados"
+            "message": f"Se obtuvieron {total} archivos validados agrupados"
         }
         
     except Exception as e:
-        print(f"❌ Error al listar validados: {e}")
+        print(f"❌ Error al listar validados agrupados: {e}")
         print(f"Traceback: {traceback.format_exc()}")
         return {
             "success": False,
@@ -78,7 +89,6 @@ def listar_todos_validados_con_usuario(db: Session) -> Dict[str, Any]:
             "total": 0,
             "message": f"Error al obtener análisis validados: {str(e)}"
         }
-
 
 def generar_excel_por_archivo_usuario(db: Session, correo_usuario: str, nombre_archivo: str) -> Dict[str, Any]:
     """

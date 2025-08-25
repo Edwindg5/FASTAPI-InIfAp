@@ -62,14 +62,15 @@ class UploadResponse(BaseModel):
     municipios_not_found: List[str] = []
 
 class UsuarioConPendientesResponse(BaseModel):
-    """Schema para mostrar usuarios con análisis pendientes"""
+    """Schema para mostrar usuarios con análisis pendientes/validados"""
     user_id: int
     nombre_usuario: Optional[str] = None
-    apellido_usuario: Optional[str] = None
     correo_usuario: Optional[str] = None
+    estatus: str 
+    nombre_archivo: Optional[str] = None
     total_pendientes: int
     ultimo_analisis_fecha: Optional[datetime] = None
-    municipios_involucrados: List[str] = []
+    fecha_validacion: Optional[datetime] = None
     
     class Config:
         from_attributes = True
@@ -131,29 +132,22 @@ class EliminarPendientesResponse(BaseModel):
     class Config:
         from_attributes = True
         
-class UsuarioConValidadosResponse(BaseModel):
-    """Schema para mostrar usuarios con análisis validados"""
-    user_id: int
-    nombre_usuario: Optional[str] = None
-    apellido_usuario: Optional[str] = None
-    correo_usuario: Optional[str] = None
-    total_validados: int
-    ultimo_analisis_fecha: Optional[datetime] = None
-    municipios_involucrados: List[str] = []
+class UsuarioValidadoSimpleResponse(BaseModel):
+    """Schema simplificado para mostrar usuarios validados"""
+    nombre_usuario: str
+    estatus: str
+    fecha: Optional[datetime] = None
+    nombre_archivo: Optional[str] = None
     
     class Config:
         from_attributes = True
 
-class ResumenUsuariosValidadosResponse(BaseModel):
-    """Schema para el resumen completo de usuarios con validados"""
+class ResumenUsuariosValidadosSimpleResponse(BaseModel):
+    """Schema para el resumen simplificado de usuarios con validados"""
     total_usuarios_con_validados: int
-    usuarios: List[UsuarioConValidadosResponse]
+    usuarios: List[UsuarioValidadoSimpleResponse]
 
-class UsuarioInfoResponse(BaseModel):
-    """Schema para información básica del usuario"""
-    user_id: int
-    nombre_completo: str
-    correo: str
+
 
 class AnalisisValidadoDetalleResponse(BaseModel):
     """Schema para detalle de un análisis validado"""
@@ -171,12 +165,5 @@ class AnalisisValidadoDetalleResponse(BaseModel):
     estatus: str
     nombre_revisor: Optional[str] = None
 
-class AnalisisValidadosPorCorreoResponse(BaseModel):
-    """Schema para análisis validados de un usuario específico"""
-    usuario_info: UsuarioInfoResponse
-    total_validados: int
-    analisis_validados: List[AnalisisValidadoDetalleResponse]
-    municipios_involucrados: List[str] = []
-    ultimo_analisis_fecha: Optional[datetime] = None
-    message: str
+
 

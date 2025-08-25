@@ -262,3 +262,25 @@ class EliminacionConAdminResponse(BaseModel):
                 }
             }
         }
+        
+class AnalisisValidadoAgrupadoResponse(BaseModel):
+    """Schema para análisis validados agrupados por archivo"""
+    nombre_usuario: Optional[str] = None
+    correo_usuario: str
+    nombre_archivo: Optional[str] = None
+    cantidad_analisis: int
+    estatus: str
+    fecha_validacion: Optional[str] = None
+    fecha_creacion: Optional[str] = None
+    rango_fechas: Optional[dict] = None
+
+    class Config:
+        from_attributes = True
+
+class ListadoValidadosAgrupadosResponse(BaseModel):
+    """Schema para la respuesta completa del listado agrupado"""
+    success: bool
+    message: str
+    data: List[AnalisisValidadoAgrupadoResponse]
+    total: int
+    timestamp: str
