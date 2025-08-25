@@ -8,6 +8,8 @@ from src.core.database import get_db
 from src.AnalisisSuelosValidados.application.analisis_suelos_validados_service import AnalisisSuelosValidadosService
 from src.AnalisisSuelosValidados.infrastructure.excel_export_service import ExcelExportService
 from src.AnalisisSuelosValidados.infrastructure.excel_export_validados_service import ExcelExportValidadosService
+from src.AnalisisSuelosPendientes.infrastructure.analisis_suelos_model import AnalisisSuelosPendientes
+from src.AnalisisSuelosValidados.application.eliminar_pen_val_service import EliminarPenValService
 import io
 from datetime import datetime
 
@@ -276,16 +278,19 @@ class EliminarValidadosResponse(BaseModel):
     eliminados: int
 
 # NUEVO ENDPOINT DELETE para eliminar análisis de suelos validados
-@router.delete("/validados/eliminar/{correo_usuario}", response_model=EliminarValidadosResponse)
-def eliminar_validados_usuario(
-    correo_usuario: str,
+@router.delete("/validados/eliminar/{user_id}", response_model=EliminarValidadosResponse)
+def eliminar_validados_usuario_por_archivo(
+    user_id: int,
+    nombre_archivo: str,  # Query parameter
     db: Session = Depends(get_db)
 ):
     """
-    Elimina TODOS los análisis de suelos validados de un usuario por su correo.
+    Elimina TODOS los análisis de suelos validados de un usuario específico 
+    filtrados por nombre de archivo.
     
     Args:
-        correo_usuario (str): Correo electrónico del usuario
+        user_id (int): ID del usuario
+        nombre_archivo (str): Nombre del archivo para filtrar (query parameter)
         
     Returns:
         EliminarValidadosResponse: Resultado de la eliminación
@@ -294,11 +299,11 @@ def eliminar_validados_usuario(
         HTTPException: Si ocurre un error durante la eliminación
     """
     try:
-        print(f"=== ENDPOINT DELETE SUELOS VALIDADOS PARA: {correo_usuario} ===")
+        print(f"=== ENDPOINT DELETE SUELOS VALIDADOS PARA USER_ID: {user_id}, ARCHIVO: {nombre_archivo} ===")
         
-        # Crear instancia del servicio y llamar al método de eliminación
-        service = AnalisisSuelosValidadosService(db)
-        resultado = service.eliminar_analisis_validados_por_correo(correo_usuario)
+        # Crear instancia del servicio de eliminación y llamar al método
+        eliminar_service = EliminarPenValService(db)
+        resultado = eliminar_service.eliminar_analisis_validados_por_user_id_y_archivo(user_id, nombre_archivo)
         
         if not resultado["success"]:
             # Si el usuario no existe, devolver 404
@@ -320,7 +325,7 @@ def eliminar_validados_usuario(
         return EliminarValidadosResponse(
             success=resultado["success"],
             message=resultado["message"],
-            usuario=resultado.get("usuario"),
+            usuario=resultado.get("usuario_correo"),
             usuario_id=resultado.get("usuario_id"),
             eliminados=resultado["eliminados"]
         )
@@ -409,4 +414,73 @@ def exportar_validados_por_usuario_y_archivo(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error interno del servidor: {str(e)}"
+        )
+        
+class EliminarPendientesResponse(BaseModel):
+    success: bool
+    message: str
+    usuario: str = None
+    usuario_id: int = None
+    eliminados: int
+
+# NUEVO ENDPOINT DELETE para eliminar análisis de suelos pendientes
+@router.delete("/pendientes/eliminar/{user_id}", response_model=EliminarPendientesResponse)
+def eliminar_pendientes_usuario_por_archivo(
+    user_id: int,
+    nombre_archivo: str,  # Query parameter
+    db: Session = Depends(get_db)
+):
+    """
+    Elimina TODOS los análisis de suelos pendientes de un usuario específico 
+    filtrados por nombre de archivo.
+    
+    Args:
+        user_id (int): ID del usuario
+        nombre_archivo (str): Nombre del archivo para filtrar (query parameter)
+        
+    Returns:
+        EliminarPendientesResponse: Resultado de la eliminación
+        
+    Raises:
+        HTTPException: Si ocurre un error durante la eliminación
+    """
+    try:
+        print(f"=== ENDPOINT DELETE SUELOS PENDIENTES PARA USER_ID: {user_id}, ARCHIVO: {nombre_archivo} ===")
+        
+        # Crear instancia del servicio de eliminación y llamar al método
+        eliminar_service = EliminarPenValService(db)
+        resultado = eliminar_service.eliminar_analisis_pendientes_por_user_id_y_archivo(user_id, nombre_archivo)
+        
+        if not resultado["success"]:
+            # Si el usuario no existe, devolver 404
+            if "no encontrado" in resultado["message"]:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=resultado["message"]
+                )
+            else:
+                # Otros errores, devolver 500
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=resultado["message"]
+                )
+        
+        # Eliminación exitosa
+        print(f"✅ Eliminación de suelos pendientes exitosa: {resultado['eliminados']} registros")
+        
+        return EliminarPendientesResponse(
+            success=resultado["success"],
+            message=resultado["message"],
+            usuario=resultado.get("usuario_correo"),
+            usuario_id=resultado.get("usuario_id"),
+            eliminados=resultado["eliminados"]
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error crítico en endpoint delete suelos pendientes: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al eliminar análisis de suelos pendientes del usuario: {str(e)}"
         )
