@@ -17,24 +17,24 @@ class AnalisisSuelosValidadosService:
             usuario = self.db.query(Users).filter(Users.correo == correo_usuario).first()
             if not usuario:
                 return {"success": False, "message": "Usuario no encontrado"}
-            
+
             # Buscar análisis pendientes del usuario
             analisis_pendientes = (
                 self.db.query(AnalisisSuelosPendientes)
                 .filter(AnalisisSuelosPendientes.user_id_FK == usuario.ID_user)
                 .all()
             )
-            
+
             if not analisis_pendientes:
                 return {"success": False, "message": "No hay análisis pendientes para este usuario"}
-            
+
             # Buscar al administrador (rol_id_FK = 1)
             admin = self.db.query(Users).filter(Users.rol_id_FK == 1).first()
             if not admin:
                 return {"success": False, "message": "No se encontró un administrador en el sistema"}
-            
+
             validados_count = 0
-            
+
             for analisis in analisis_pendientes:
                 # Crear nuevo registro en analisis_suelos_validados
                 analisis_validado = AnalisisSuelosValidados(
@@ -76,17 +76,17 @@ class AnalisisSuelosValidadosService:
                     fecha_validacion=func.now(),
                     fecha_creacion=analisis.fecha_creacion
                 )
-                
+
                 self.db.add(analisis_validado)
                 validados_count += 1
-            
+
             # Eliminar todos los análisis pendientes del usuario
             self.db.query(AnalisisSuelosPendientes).filter(
                 AnalisisSuelosPendientes.user_id_FK == usuario.ID_user
             ).delete()
-            
+
             self.db.commit()
-            
+
             return {
                 "success": True,
                 "message": f"Se validaron {validados_count} análisis correctamente",
@@ -97,7 +97,7 @@ class AnalisisSuelosValidadosService:
                     "apellido": usuario.apellido
                 }
             }
-            
+
         except Exception as e:
             self.db.rollback()
             return {"success": False, "message": f"Error al validar análisis: {str(e)}"}
@@ -117,7 +117,7 @@ class AnalisisSuelosValidadosService:
                     "total_registros": 0,
                     "datos": []
                 }
-            
+
             # Obtener TODOS los análisis pendientes del usuario
             analisis_pendientes = (
                 self.db.query(AnalisisSuelosPendientes)
@@ -125,7 +125,7 @@ class AnalisisSuelosValidadosService:
                 .order_by(AnalisisSuelosPendientes.fecha_creacion.desc())
                 .all()
             )
-            
+
             if not analisis_pendientes:
                 return {
                     "success": False,
@@ -139,7 +139,7 @@ class AnalisisSuelosValidadosService:
                     },
                     "datos": []
                 }
-            
+
             # Procesar todos los datos con manejo seguro de valores None
             datos_procesados = []
             for i, analisis in enumerate(analisis_pendientes, 1):
@@ -148,7 +148,7 @@ class AnalisisSuelosValidadosService:
                     "numero_registro": i,
                     "id": getattr(analisis, 'id', None),
                     "user_id": usuario.ID_user,
-                    
+
                     # Información geográfica
                     "municipio_id_FK": getattr(analisis, 'municipio_id_FK', None),
                     "municipio_cuadernillo": getattr(analisis, 'municipio_cuadernillo', ''),
@@ -157,35 +157,35 @@ class AnalisisSuelosValidadosService:
                     "clave_munip": getattr(analisis, 'clave_munip', ''),
                     "clave_localidad": getattr(analisis, 'clave_localidad', ''),
                     "estado_cuadernillo": getattr(analisis, 'estado_cuadernillo', ''),
-                    
+
                     # Coordenadas y ubicación
                     "coordenada_x": getattr(analisis, 'coordenada_x', ''),
                     "coordenada_y": getattr(analisis, 'coordenada_y', ''),
                     "elevacion_msnm": getattr(analisis, 'elevacion_msnm', None),
-                    
+
                     # Información del productor
                     "nombre_productor": getattr(analisis, 'nombre_productor', ''),
                     "tel_productor": getattr(analisis, 'tel_productor', ''),
                     "correo_productor": getattr(analisis, 'correo_productor', ''),
-                    
+
                     # Información del técnico
                     "nombre_tecnico": getattr(analisis, 'nombre_tecnico', ''),
                     "tel_tecnico": getattr(analisis, 'tel_tecnico', ''),
                     "correo_tecnico": getattr(analisis, 'correo_tecnico', ''),
-                    
+
                     # Información agrícola
                     "cultivo_anterior": getattr(analisis, 'cultivo_anterior', ''),
                     "cultivo_establecer": getattr(analisis, 'cultivo_establecer', ''),
                     "manejo": getattr(analisis, 'manejo', ''),
                     "tipo_vegetacion": getattr(analisis, 'tipo_vegetacion', ''),
                     "parcela": getattr(analisis, 'parcela', ''),
-                    
+
                     # Información de muestreo
                     "profundidad_muestreo": getattr(analisis, 'profundidad_muestreo', ''),
                     "fecha_muestreo": str(analisis.fecha_muestreo) if getattr(analisis, 'fecha_muestreo', None) else '',
                     "muestra": getattr(analisis, 'muestra', ''),
                     "reemplazo": getattr(analisis, 'reemplazo', ''),
-                    
+
                     # Información administrativa
                     "numero": getattr(analisis, 'numero', None),
                     "clave_estatal": getattr(analisis, 'clave_estatal', None),
@@ -195,13 +195,13 @@ class AnalisisSuelosValidadosService:
                     "ddr": getattr(analisis, 'ddr', ''),
                     "cader": getattr(analisis, 'cader', ''),
                     "nombre_revisor": getattr(analisis, 'nombre_revisor', ''),
-                    
+
                     # Fechas
                     "fecha_creacion": str(analisis.fecha_creacion) if getattr(analisis, 'fecha_creacion', None) else '',
                 }
-                
+
                 datos_procesados.append(dato)
-            
+
             return {
                 "success": True,
                 "message": f"Se encontraron {len(analisis_pendientes)} análisis pendientes",
@@ -214,7 +214,7 @@ class AnalisisSuelosValidadosService:
                 },
                 "datos": datos_procesados
             }
-            
+
         except Exception as e:
             print(f"Error al obtener análisis pendientes detallados: {str(e)}")
             return {
@@ -241,7 +241,7 @@ class AnalisisSuelosValidadosService:
                 )
                 .all()
             )
-            
+
             if not analisis_pendientes:
                 return {
                     "success": False,
@@ -250,19 +250,19 @@ class AnalisisSuelosValidadosService:
                     "total_usuarios": 0,
                     "datos": []
                 }
-            
+
             # Procesar todos los datos con manejo seguro de valores None
             datos_procesados = []
             usuarios_unicos = set()
-            
+
             for i, (analisis, usuario) in enumerate(analisis_pendientes, 1):
                 usuarios_unicos.add(usuario.correo)
-                
+
                 dato = {
                     # Información básica del registro
                     "numero_registro": i,
                     "id": getattr(analisis, 'id', None),
-                    
+
                     # Información del usuario propietario
                     "user_id": usuario.ID_user,
                     "usuario_correo": usuario.correo,
@@ -270,7 +270,7 @@ class AnalisisSuelosValidadosService:
                     "usuario_apellido": getattr(usuario, 'apellido', '') or '',
                     "usuario_nombre_completo": f"{getattr(usuario, 'nombre', '') or ''} {getattr(usuario, 'apellido', '') or ''}".strip(),
                     "usuario_rol": getattr(usuario, 'rol_id_FK', None),
-                    
+
                     # Información geográfica
                     "municipio_id_FK": getattr(analisis, 'municipio_id_FK', None),
                     "municipio_cuadernillo": getattr(analisis, 'municipio_cuadernillo', ''),
@@ -279,35 +279,35 @@ class AnalisisSuelosValidadosService:
                     "clave_munip": getattr(analisis, 'clave_munip', ''),
                     "clave_localidad": getattr(analisis, 'clave_localidad', ''),
                     "estado_cuadernillo": getattr(analisis, 'estado_cuadernillo', ''),
-                    
+
                     # Coordenadas y ubicación
                     "coordenada_x": getattr(analisis, 'coordenada_x', ''),
                     "coordenada_y": getattr(analisis, 'coordenada_y', ''),
                     "elevacion_msnm": getattr(analisis, 'elevacion_msnm', None),
-                    
+
                     # Información del productor
                     "nombre_productor": getattr(analisis, 'nombre_productor', ''),
                     "tel_productor": getattr(analisis, 'tel_productor', ''),
                     "correo_productor": getattr(analisis, 'correo_productor', ''),
-                    
+
                     # Información del técnico
                     "nombre_tecnico": getattr(analisis, 'nombre_tecnico', ''),
                     "tel_tecnico": getattr(analisis, 'tel_tecnico', ''),
                     "correo_tecnico": getattr(analisis, 'correo_tecnico', ''),
-                    
+
                     # Información agrícola
                     "cultivo_anterior": getattr(analisis, 'cultivo_anterior', ''),
                     "cultivo_establecer": getattr(analisis, 'cultivo_establecer', ''),
                     "manejo": getattr(analisis, 'manejo', ''),
                     "tipo_vegetacion": getattr(analisis, 'tipo_vegetacion', ''),
                     "parcela": getattr(analisis, 'parcela', ''),
-                    
+
                     # Información de muestreo
                     "profundidad_muestreo": getattr(analisis, 'profundidad_muestreo', ''),
                     "fecha_muestreo": str(analisis.fecha_muestreo) if getattr(analisis, 'fecha_muestreo', None) else '',
                     "muestra": getattr(analisis, 'muestra', ''),
                     "reemplazo": getattr(analisis, 'reemplazo', ''),
-                    
+
                     # Información administrativa
                     "numero": getattr(analisis, 'numero', None),
                     "clave_estatal": getattr(analisis, 'clave_estatal', None),
@@ -317,13 +317,13 @@ class AnalisisSuelosValidadosService:
                     "ddr": getattr(analisis, 'ddr', ''),
                     "cader": getattr(analisis, 'cader', ''),
                     "nombre_revisor": getattr(analisis, 'nombre_revisor', ''),
-                    
+
                     # Fechas
                     "fecha_creacion": str(analisis.fecha_creacion) if getattr(analisis, 'fecha_creacion', None) else '',
                 }
-                
+
                 datos_procesados.append(dato)
-            
+
             return {
                 "success": True,
                 "message": f"Se encontraron {len(analisis_pendientes)} análisis pendientes de {len(usuarios_unicos)} usuarios",
@@ -332,7 +332,7 @@ class AnalisisSuelosValidadosService:
                 "usuarios_con_pendientes": list(usuarios_unicos),
                 "datos": datos_procesados
             }
-            
+
         except Exception as e:
             print(f"Error al obtener todos los análisis pendientes detallados: {str(e)}")
             return {
@@ -342,8 +342,7 @@ class AnalisisSuelosValidadosService:
                 "total_usuarios": 0,
                 "datos": []
             }
-            
-            
+
     def obtener_validados_detallados_por_correo(self, correo_usuario: str) -> dict:
         """
         Obtiene todos los análisis validados de un usuario específico con información detallada.
@@ -358,7 +357,7 @@ class AnalisisSuelosValidadosService:
                     "total_registros": 0,
                     "datos": []
                 }
-            
+
             # Obtener TODOS los análisis validados del usuario
             analisis_validados = (
                 self.db.query(AnalisisSuelosValidados)
@@ -366,7 +365,7 @@ class AnalisisSuelosValidadosService:
                 .order_by(AnalisisSuelosValidados.fecha_validacion.desc())
                 .all()
             )
-            
+
             if not analisis_validados:
                 return {
                     "success": False,
@@ -380,7 +379,7 @@ class AnalisisSuelosValidadosService:
                     },
                     "datos": []
                 }
-            
+
             # Procesar todos los datos con manejo seguro de valores None
             datos_procesados = []
             for i, analisis in enumerate(analisis_validados, 1):
@@ -389,7 +388,7 @@ class AnalisisSuelosValidadosService:
                     "numero_registro": i,
                     "id": getattr(analisis, 'id', None),
                     "user_id": usuario.ID_user,
-                    
+
                     # Información geográfica
                     "municipio_id_FK": getattr(analisis, 'municipio_id_FK', None),
                     "municipio_cuadernillo": getattr(analisis, 'municipio_cuadernillo', ''),
@@ -398,35 +397,35 @@ class AnalisisSuelosValidadosService:
                     "clave_munip": getattr(analisis, 'clave_munip', ''),
                     "clave_localidad": getattr(analisis, 'clave_localidad', ''),
                     "estado_cuadernillo": getattr(analisis, 'estado_cuadernillo', ''),
-                    
+
                     # Coordenadas y ubicación
                     "coordenada_x": getattr(analisis, 'coordenada_x', ''),
                     "coordenada_y": getattr(analisis, 'coordenada_y', ''),
                     "elevacion_msnm": getattr(analisis, 'elevacion_msnm', None),
-                    
+
                     # Información del productor
                     "nombre_productor": getattr(analisis, 'nombre_productor', ''),
                     "tel_productor": getattr(analisis, 'tel_productor', ''),
                     "correo_productor": getattr(analisis, 'correo_productor', ''),
-                    
+
                     # Información del técnico
                     "nombre_tecnico": getattr(analisis, 'nombre_tecnico', ''),
                     "tel_tecnico": getattr(analisis, 'tel_tecnico', ''),
                     "correo_tecnico": getattr(analisis, 'correo_tecnico', ''),
-                    
+
                     # Información agrícola
                     "cultivo_anterior": getattr(analisis, 'cultivo_anterior', ''),
                     "cultivo_establecer": getattr(analisis, 'cultivo_establecer', ''),
                     "manejo": getattr(analisis, 'manejo', ''),
                     "tipo_vegetacion": getattr(analisis, 'tipo_vegetacion', ''),
                     "parcela": getattr(analisis, 'parcela', ''),
-                    
+
                     # Información de muestreo
                     "profundidad_muestreo": getattr(analisis, 'profundidad_muestreo', ''),
                     "fecha_muestreo": str(analisis.fecha_muestreo) if getattr(analisis, 'fecha_muestreo', None) else '',
                     "muestra": getattr(analisis, 'muestra', ''),
                     "reemplazo": getattr(analisis, 'reemplazo', ''),
-                    
+
                     # Información administrativa
                     "numero": getattr(analisis, 'numero', None),
                     "clave_estatal": getattr(analisis, 'clave_estatal', None),
@@ -436,14 +435,14 @@ class AnalisisSuelosValidadosService:
                     "ddr": getattr(analisis, 'ddr', ''),
                     "cader": getattr(analisis, 'cader', ''),
                     "nombre_revisor": getattr(analisis, 'nombre_revisor', ''),
-                    
+
                     # Fechas específicas de validados
                     "fecha_validacion": str(analisis.fecha_validacion) if getattr(analisis, 'fecha_validacion', None) else '',
                     "fecha_creacion": str(analisis.fecha_creacion) if getattr(analisis, 'fecha_creacion', None) else '',
                 }
-                
+
                 datos_procesados.append(dato)
-            
+
             return {
                 "success": True,
                 "message": f"Se encontraron {len(analisis_validados)} análisis validados",
@@ -456,7 +455,7 @@ class AnalisisSuelosValidadosService:
                 },
                 "datos": datos_procesados
             }
-            
+
         except Exception as e:
             print(f"Error al obtener análisis validados detallados: {str(e)}")
             return {
@@ -483,7 +482,7 @@ class AnalisisSuelosValidadosService:
                 )
                 .all()
             )
-            
+
             if not analisis_validados:
                 return {
                     "success": False,
@@ -492,19 +491,19 @@ class AnalisisSuelosValidadosService:
                     "total_usuarios": 0,
                     "datos": []
                 }
-            
+
             # Procesar todos los datos con manejo seguro de valores None
             datos_procesados = []
             usuarios_unicos = set()
-            
+
             for i, (analisis, usuario) in enumerate(analisis_validados, 1):
                 usuarios_unicos.add(usuario.correo)
-                
+
                 dato = {
                     # Información básica del registro
                     "numero_registro": i,
                     "id": getattr(analisis, 'id', None),
-                    
+
                     # Información del usuario propietario
                     "user_id": usuario.ID_user,
                     "usuario_correo": usuario.correo,
@@ -512,7 +511,7 @@ class AnalisisSuelosValidadosService:
                     "usuario_apellido": getattr(usuario, 'apellido', '') or '',
                     "usuario_nombre_completo": f"{getattr(usuario, 'nombre', '') or ''} {getattr(usuario, 'apellido', '') or ''}".strip(),
                     "usuario_rol": getattr(usuario, 'rol_id_FK', None),
-                    
+
                     # Información geográfica
                     "municipio_id_FK": getattr(analisis, 'municipio_id_FK', None),
                     "municipio_cuadernillo": getattr(analisis, 'municipio_cuadernillo', ''),
@@ -521,35 +520,35 @@ class AnalisisSuelosValidadosService:
                     "clave_munip": getattr(analisis, 'clave_munip', ''),
                     "clave_localidad": getattr(analisis, 'clave_localidad', ''),
                     "estado_cuadernillo": getattr(analisis, 'estado_cuadernillo', ''),
-                    
+
                     # Coordenadas y ubicación
                     "coordenada_x": getattr(analisis, 'coordenada_x', ''),
                     "coordenada_y": getattr(analisis, 'coordenada_y', ''),
                     "elevacion_msnm": getattr(analisis, 'elevacion_msnm', None),
-                    
+
                     # Información del productor
                     "nombre_productor": getattr(analisis, 'nombre_productor', ''),
                     "tel_productor": getattr(analisis, 'tel_productor', ''),
                     "correo_productor": getattr(analisis, 'correo_productor', ''),
-                    
+
                     # Información del técnico
                     "nombre_tecnico": getattr(analisis, 'nombre_tecnico', ''),
                     "tel_tecnico": getattr(analisis, 'tel_tecnico', ''),
                     "correo_tecnico": getattr(analisis, 'correo_tecnico', ''),
-                    
+
                     # Información agrícola
                     "cultivo_anterior": getattr(analisis, 'cultivo_anterior', ''),
                     "cultivo_establecer": getattr(analisis, 'cultivo_establecer', ''),
                     "manejo": getattr(analisis, 'manejo', ''),
                     "tipo_vegetacion": getattr(analisis, 'tipo_vegetacion', ''),
                     "parcela": getattr(analisis, 'parcela', ''),
-                    
+
                     # Información de muestreo
                     "profundidad_muestreo": getattr(analisis, 'profundidad_muestreo', ''),
                     "fecha_muestreo": str(analisis.fecha_muestreo) if getattr(analisis, 'fecha_muestreo', None) else '',
                     "muestra": getattr(analisis, 'muestra', ''),
                     "reemplazo": getattr(analisis, 'reemplazo', ''),
-                    
+
                     # Información administrativa
                     "numero": getattr(analisis, 'numero', None),
                     "clave_estatal": getattr(analisis, 'clave_estatal', None),
@@ -559,14 +558,14 @@ class AnalisisSuelosValidadosService:
                     "ddr": getattr(analisis, 'ddr', ''),
                     "cader": getattr(analisis, 'cader', ''),
                     "nombre_revisor": getattr(analisis, 'nombre_revisor', ''),
-                    
+
                     # Fechas específicas de validados
                     "fecha_validacion": str(analisis.fecha_validacion) if getattr(analisis, 'fecha_validacion', None) else '',
                     "fecha_creacion": str(analisis.fecha_creacion) if getattr(analisis, 'fecha_creacion', None) else '',
                 }
-                
+
                 datos_procesados.append(dato)
-            
+
             return {
                 "success": True,
                 "message": f"Se encontraron {len(analisis_validados)} análisis validados de {len(usuarios_unicos)} usuarios",
@@ -575,7 +574,7 @@ class AnalisisSuelosValidadosService:
                 "usuarios_con_validados": list(usuarios_unicos),
                 "datos": datos_procesados
             }
-            
+
         except Exception as e:
             print(f"Error al obtener todos los análisis validados detallados: {str(e)}")
             return {
@@ -591,21 +590,21 @@ class AnalisisSuelosValidadosService:
         Elimina TODOS los análisis de suelos validados asociados a un usuario por su correo.
         Busca todos los registros en analisis_suelos_validados que tengan user_id_FK = usuario.ID_user
         y los elimina permanentemente.
-        
+
         Args:
             correo_usuario (str): Correo electrónico del usuario
-            
+
         Returns:
             dict: Resultado de la operación de eliminación
         """
         try:
             print(f"=== ELIMINANDO ANÁLISIS DE SUELOS VALIDADOS PARA: {correo_usuario} ===")
-            
+
             # Buscar usuario por correo
             usuario = self.db.query(Users).filter(
                 Users.correo == correo_usuario.strip().lower()
             ).first()
-            
+
             if not usuario:
                 print(f"Usuario no encontrado: {correo_usuario}")
                 return {
@@ -613,18 +612,18 @@ class AnalisisSuelosValidadosService:
                     "message": f"Usuario con correo '{correo_usuario}' no encontrado",
                     "eliminados": 0
                 }
-            
+
             print(f"Usuario encontrado: ID={usuario.ID_user}, correo={usuario.correo}")
-            
+
             # Contar cuántos análisis validados tiene el usuario
             total_validados = (
                 self.db.query(AnalisisSuelosValidados)
                 .filter(AnalisisSuelosValidados.user_id_FK == usuario.ID_user)
                 .count()
             )
-            
+
             print(f"Análisis de suelos validados encontrados para eliminar: {total_validados}")
-            
+
             if total_validados == 0:
                 return {
                     "success": True,
@@ -633,21 +632,21 @@ class AnalisisSuelosValidadosService:
                     "usuario_id": usuario.ID_user,
                     "eliminados": 0
                 }
-            
+
             # ELIMINAR todos los análisi validados del usuario
             registros_eliminados = (
                 self.db.query(AnalisisSuelosValidados)
                 .filter(AnalisisSuelosValidados.user_id_FK == usuario.ID_user)
                 .delete(synchronize_session=False)
             )
-            
+
             # Hacer commit de la eliminación
             self.db.commit()
-            
+
             print(f"✅ ELIMINACIÓN DE SUELOS VALIDADOS COMPLETADA:")
             print(f"   - Usuario: {correo_usuario} (ID: {usuario.ID_user})")
             print(f"   - Registros eliminados: {registros_eliminados}")
-            
+
             return {
                 "success": True,
                 "message": f"Se eliminaron {registros_eliminados} análisis de suelos validados exitosamente",
@@ -655,12 +654,12 @@ class AnalisisSuelosValidadosService:
                 "usuario_id": usuario.ID_user,
                 "eliminados": registros_eliminados
             }
-            
+
         except Exception as e:
             print(f"❌ Error en eliminación de suelos validados: {e}")
             import traceback
             print(f"Traceback: {traceback.format_exc()}")
-            
+
             # Rollback en caso de error
             self.db.rollback()
             return {
@@ -669,4 +668,138 @@ class AnalisisSuelosValidadosService:
                 "usuario": correo_usuario,
                 "eliminados": 0,
                 "error": str(e)
+            }
+
+    def obtener_validados_por_user_id_y_archivo(self, user_id: int, nombre_archivo: str) -> dict:
+        """
+        Obtiene todos los análisis validados de un usuario específico filtrados por nombre de archivo.
+
+        Args:
+            user_id (int): ID del usuario
+            nombre_archivo (str): Nombre del archivo para filtrar
+
+        Returns:
+            dict: Resultado con los datos encontrados
+        """
+        try:
+            # Buscar usuario por ID
+            usuario = self.db.query(Users).filter(Users.ID_user == user_id).first()
+            if not usuario:
+                return {
+                    "success": False,
+                    "message": "Usuario no encontrado",
+                    "total_registros": 0,
+                    "datos": []
+                }
+
+            # Obtener análisis validados del usuario filtrados por nombre de archivo
+            analisis_validados = (
+                self.db.query(AnalisisSuelosValidados)
+                .filter(
+                    AnalisisSuelosValidados.user_id_FK == user_id,
+                    AnalisisSuelosValidados.nombre_archivo == nombre_archivo
+                )
+                .order_by(AnalisisSuelosValidados.fecha_validacion.desc())
+                .all()
+            )
+
+            if not analisis_validados:
+                return {
+                    "success": False,
+                    "message": f"No hay análisis validados para el usuario ID {user_id} con el archivo '{nombre_archivo}'",
+                    "total_registros": 0,
+                    "usuario_info": {
+                        "id": usuario.ID_user,
+                        "correo": usuario.correo,
+                        "nombre": usuario.nombre,
+                        "apellido": usuario.apellido
+                    },
+                    "datos": []
+                }
+
+            # Procesar todos los datos con manejo seguro de valores None
+            datos_procesados = []
+            for i, analisis in enumerate(analisis_validados, 1):
+                dato = {
+                    # Información básica
+                    "numero_registro": i,
+                    "id": getattr(analisis, 'id', None),
+                    "user_id": usuario.ID_user,
+
+                    # Información geográfica
+                    "municipio_id_FK": getattr(analisis, 'municipio_id_FK', None),
+                    "municipio_cuadernillo": getattr(analisis, 'municipio_cuadernillo', ''),
+                    "localidad_cuadernillo": getattr(analisis, 'localidad_cuadernillo', ''),
+                    "clave_municipio": getattr(analisis, 'clave_municipio', None),
+                    "clave_munip": getattr(analisis, 'clave_munip', ''),
+                    "clave_localidad": getattr(analisis, 'clave_localidad', ''),
+                    "estado_cuadernillo": getattr(analisis, 'estado_cuadernillo', ''),
+
+                    # Coordenadas y ubicación
+                    "coordenada_x": getattr(analisis, 'coordenada_x', ''),
+                    "coordenada_y": getattr(analisis, 'coordenada_y', ''),
+                    "elevacion_msnm": getattr(analisis, 'elevacion_msnm', None),
+
+                    # Información del productor
+                    "nombre_productor": getattr(analisis, 'nombre_productor', ''),
+                    "tel_productor": getattr(analisis, 'tel_productor', ''),
+                    "correo_productor": getattr(analisis, 'correo_productor', ''),
+
+                    # Información del técnico
+                    "nombre_tecnico": getattr(analisis, 'nombre_tecnico', ''),
+                    "tel_tecnico": getattr(analisis, 'tel_tecnico', ''),
+                    "correo_tecnico": getattr(analisis, 'correo_tecnico', ''),
+
+                    # Información agrícola
+                    "cultivo_anterior": getattr(analisis, 'cultivo_anterior', ''),
+                    "cultivo_establecer": getattr(analisis, 'cultivo_establecer', ''),
+                    "manejo": getattr(analisis, 'manejo', ''),
+                    "tipo_vegetacion": getattr(analisis, 'tipo_vegetacion', ''),
+                    "parcela": getattr(analisis, 'parcela', ''),
+
+                    # Información de muestreo
+                    "profundidad_muestreo": getattr(analisis, 'profundidad_muestreo', ''),
+                    "fecha_muestreo": str(analisis.fecha_muestreo) if getattr(analisis, 'fecha_muestreo', None) else '',
+                    "muestra": getattr(analisis, 'muestra', ''),
+                    "reemplazo": getattr(analisis, 'reemplazo', ''),
+
+                    # Información administrativa
+                    "numero": getattr(analisis, 'numero', None),
+                    "clave_estatal": getattr(analisis, 'clave_estatal', None),
+                    "recuento_curp_renapo": getattr(analisis, 'recuento_curp_renapo', None),
+                    "extraccion_edo": getattr(analisis, 'extraccion_edo', ''),
+                    "clave": getattr(analisis, 'clave', ''),
+                    "ddr": getattr(analisis, 'ddr', ''),
+                    "cader": getattr(analisis, 'cader', ''),
+                    "nombre_revisor": getattr(analisis, 'nombre_revisor', ''),
+                    "nombre_archivo": getattr(analisis, 'nombre_archivo', ''),
+
+                    # Fechas específicas de validados
+                    "fecha_validacion": str(analisis.fecha_validacion) if getattr(analisis, 'fecha_validacion', None) else '',
+                    "fecha_creacion": str(analisis.fecha_creacion) if getattr(analisis, 'fecha_creacion', None) else '',
+                }
+
+                datos_procesados.append(dato)
+
+            return {
+                "success": True,
+                "message": f"Se encontraron {len(analisis_validados)} análisis validados del archivo '{nombre_archivo}'",
+                "total_registros": len(analisis_validados),
+                "usuario_info": {
+                    "id": usuario.ID_user,
+                    "correo": usuario.correo,
+                    "nombre": usuario.nombre or '',
+                    "apellido": usuario.apellido or ''
+                },
+                "nombre_archivo": nombre_archivo,
+                "datos": datos_procesados
+            }
+
+        except Exception as e:
+            print(f"Error al obtener análisis validados por user_id y archivo: {str(e)}")
+            return {
+                "success": False,
+                "message": f"Error al obtener datos: {str(e)}",
+                "total_registros": 0,
+                "datos": []
             }

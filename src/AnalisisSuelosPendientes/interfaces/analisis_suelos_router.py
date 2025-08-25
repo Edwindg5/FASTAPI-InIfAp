@@ -127,19 +127,24 @@ def obtener_usuarios_con_pendientes(
 @router.get("/descargar-excel/{user_id}")
 def descargar_excel_usuario_pendientes(
     user_id: int,
+    nombre_archivo: str = Query(None, description="Nombre del archivo específico a filtrar (opcional)"),
     db: Session = Depends(get_db)
 ):
     """
-    Descarga un archivo Excel con todos los análisis pendientes de un usuario específico.
+    Descarga un archivo Excel con los análisis pendientes de un usuario específico.
+    Opcionalmente filtrado por nombre de archivo.
     
     **Funcionalidades:**
-    - Exporta TODOS los registros pendientes del usuario
+    - Exporta registros pendientes del usuario
+    - Si se especifica nombre_archivo, solo exporta registros de ese archivo
+    - Si no se especifica nombre_archivo, exporta TODOS los registros pendientes del usuario
     - Incluye hoja de resumen con información del usuario
     - Formato Excel (.xlsx) optimizado con columnas auto-ajustadas
     - Ordenado por fecha de creación (más recientes primero)
     
     **Parámetros:**
     - user_id: ID del usuario cuyos datos pendientes se descargarán
+    - nombre_archivo: (Opcional) Nombre específico del archivo a filtrar
     
     **Retorna:**
     - Archivo Excel como descarga directa
@@ -147,12 +152,12 @@ def descargar_excel_usuario_pendientes(
     
     **Errores posibles:**
     - 404: Usuario no encontrado
-    - 400: Usuario no tiene análisis pendientes
+    - 400: Usuario no tiene análisis pendientes (o no tiene del archivo especificado)
     - 500: Error generando el archivo
     """
     try:
-        # Generar Excel
-        excel_bytes = UsuariosPendientesService.generar_excel_por_usuario(db, user_id)
+        # Generar Excel con filtro opcional por archivo
+        excel_bytes = UsuariosPendientesService.generar_excel_por_usuario(db, user_id, nombre_archivo)
         
         # Obtener información del usuario para el nombre del archivo
         from src.Users.infrastructure.users_model import Users
@@ -161,20 +166,20 @@ def descargar_excel_usuario_pendientes(
         if not usuario:
             raise HTTPException(status_code=404, detail=f"Usuario con ID {user_id} no encontrado")
         
-        # Crear nombre de archiv
+        # Crear nombre de archivo
         nombre_usuario = f"{usuario.nombre or ''}{usuario.apellido or ''}".replace(" ", "_")
         if not nombre_usuario.strip():
             nombre_usuario = usuario.correo.split('@')[0]
         
         fecha_actual = datetime.now().strftime('%d%m%Y_%H%M')
-        nombre_archivo = f"analisis_pendientes_{nombre_usuario}_{user_id}_{fecha_actual}.xlsx"
+        
+        # Incluir nombre del archivo en el nombre de descarga si se especificó
+        archivo_parte = f"_{nombre_archivo.replace('.xlsx', '').replace('.xls', '')}" if nombre_archivo else "_todos"
+        nombre_descarga = f"analisis_pendientes_{nombre_usuario}_{user_id}{archivo_parte}_{fecha_actual}.xlsx"
         
         # Crear respuesta de streaming
-        def iter_excel():
-            yield excel_bytes
-        
         headers = {
-            'Content-Disposition': f'attachment; filename="{nombre_archivo}"',
+            'Content-Disposition': f'attachment; filename="{nombre_descarga}"',
             'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         }
         
@@ -191,7 +196,6 @@ def descargar_excel_usuario_pendientes(
             raise HTTPException(status_code=404, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generando archivo Excel: {str(e)}")
-
 
 @router.delete("/eliminar-pendientes/{correo_usuario}", response_model=EliminarPendientesResponse)
 def eliminar_analisis_pendientes_por_usuario(

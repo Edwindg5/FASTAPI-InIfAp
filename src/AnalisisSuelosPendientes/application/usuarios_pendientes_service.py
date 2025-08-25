@@ -12,170 +12,6 @@ from src.Users.infrastructure.users_model import Users
 
 class UsuariosPendientesService:
     
-
-    @staticmethod
-    def generar_excel_por_usuario(db: Session, user_id: int) -> bytes:
-        """
-        Genera un archivo Excel con todos los análisis pendientes de un usuario específico
-        """
-        try:
-            print(f"Generando Excel para usuario ID: {user_id}")
-            
-            # 1. Verificar que el usuario existe
-            usuario = db.query(Users).filter(Users.ID_user == user_id).first()
-            if not usuario:
-                raise ValueError(f"No se encontró el usuario con ID: {user_id}")
-            
-            # 2. Obtener todos los análisis pendientes del usuario
-            analisis_pendientes = (
-                db.query(AnalisisSuelosPendientes)
-                .filter(
-                    AnalisisSuelosPendientes.user_id_FK == user_id,
-                    AnalisisSuelosPendientes.estatus == 'pendiente'
-                )
-                .order_by(AnalisisSuelosPendientes.fecha_creacion.desc())
-            ).all()
-            
-            if not analisis_pendientes:
-                raise ValueError(f"El usuario {usuario.correo} no tiene análisis pendientes")
-            
-            print(f"Se encontraron {len(analisis_pendientes)} análisis pendientes para {usuario.correo}")
-            
-            # 3. Preparar datos para Excel con orden lógico de columnas
-            data_rows = []
-            
-            for analisis in analisis_pendientes:
-                row_data = {
-                    # Información básica
-                    'ID': analisis.id,
-                    'Número': analisis.numero,
-                    'Estatus': analisis.estatus,
-                    'Fecha Creación': analisis.fecha_creacion.strftime('%d/%m/%Y %H:%M') if analisis.fecha_creacion else '',
-                    
-                    # Información geográfica
-                    'Clave Estatal': analisis.clave_estatal,
-                    'Estado Cuadernillo': analisis.estado_cuadernillo,
-                    'Clave Municipio': analisis.clave_municipio,
-                    'Clave Munip': analisis.clave_munip,
-                    'Municipio Cuadernillo': analisis.municipio_cuadernillo,
-                    'Clave Localidad': analisis.clave_localidad,
-                    'Localidad Cuadernillo': analisis.localidad_cuadernillo,
-                    
-                    # Información técnica
-                    'Recuento CURP Renapo': analisis.recuento_curp_renapo,
-                    'Extracción Edo': analisis.extraccion_edo,
-                    'Clave': analisis.clave,
-                    'DDR': analisis.ddr,
-                    'CADER': analisis.cader,
-                    
-                    # Coordenadas y ubicación
-                    'Coordenada X': analisis.coordenada_x,
-                    'Coordenada Y': analisis.coordenada_y,
-                    'Elevación MSNM': analisis.elevacion_msnm,
-                    
-                    # Información de muestreo
-                    'Profundidad Muestreo': analisis.profundidad_muestreo,
-                    'Fecha Muestreo': analisis.fecha_muestreo.strftime('%d/%m/%Y') if analisis.fecha_muestreo else '',
-                    'Parcela': analisis.parcela,
-                    'Cultivo Anterior': analisis.cultivo_anterior,
-                    'Cultivo a Establecer': analisis.cultivo_establecer,
-                    'Manejo': analisis.manejo,
-                    'Tipo Vegetación': analisis.tipo_vegetacion,
-                    
-                    # Información del técnico
-                    'Nombre Técnico': analisis.nombre_tecnico,
-                    'Tel Técnico': analisis.tel_tecnico,
-                    'Correo Técnico': analisis.correo_tecnico,
-                    
-                    # Información del productor
-                    'Nombre Productor': analisis.nombre_productor,
-                    'Tel Productor': analisis.tel_productor,
-                    'Correo Productor': analisis.correo_productor,
-                    
-                    # Información final
-                    'Muestra': analisis.muestra,
-                    'Reemplazo': analisis.reemplazo,
-                    'Nombre Revisor': analisis.nombre_revisor,
-                    
-                    # Comentarios (si existen)
-                    'Comentario Inválido': analisis.comentario_invalido,
-                    
-                    # FK de referencia
-                    'Municipio ID FK': analisis.municipio_id_FK,
-                    'User ID FK': analisis.user_id_FK
-                }
-                
-                data_rows.append(row_data)
-            
-            # 4. Crear DataFrame
-            df = pd.DataFrame(data_rows)
-            
-            # 5. Información del usuario para el nombre del archivo y hoja
-            nombre_completo = f"{usuario.nombre or ''} {usuario.apellido or ''}".strip()
-            if not nombre_completo:
-                nombre_completo = usuario.correo.split('@')[0]  # Usar parte del correo si no hay nombre
-            
-            fecha_generacion = datetime.now().strftime('%d%m%Y_%H%M')
-            
-            # 6. Crear archivo Excel en memoria
-            excel_buffer = io.BytesIO()
-            
-            with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-                # Crear hoja principal con datos
-                sheet_name = f"Pendientes_{user_id}"
-                df.to_excel(writer, sheet_name=sheet_name, index=False)
-                
-                # Obtener la hoja para darle formato
-                workbook = writer.book
-                worksheet = workbook[sheet_name]
-                
-                # Ajustar ancho de columnas automáticamente
-                for column in worksheet.columns:
-                    max_length = 0
-                    column_letter = column[0].column_letter
-                    
-                    for cell in column:
-                        try:
-                            if len(str(cell.value)) > max_length:
-                                max_length = len(str(cell.value))
-                        except:
-                            pass
-                    
-                    adjusted_width = min(max_length + 2, 50)  # Máximo 50 caracteres
-                    worksheet.column_dimensions[column_letter].width = adjusted_width
-                
-                # Crear hoja de resumen
-                resumen_data = {
-                    'Información del Reporte': [
-                        'Usuario ID', 'Nombre Usuario', 'Correo Usuario', 
-                        'Total Registros', 'Fecha Generación', 'Estado de Registros'
-                    ],
-                    'Valores': [
-                        user_id, nombre_completo, usuario.correo,
-                        len(analisis_pendientes), datetime.now().strftime('%d/%m/%Y %H:%M'), 'Pendientes'
-                    ]
-                }
-                
-                resumen_df = pd.DataFrame(resumen_data)
-                resumen_df.to_excel(writer, sheet_name='Resumen', index=False)
-            
-            excel_buffer.seek(0)
-            excel_bytes = excel_buffer.getvalue()
-            excel_buffer.close()
-            
-            print(f"Excel generado exitosamente: {len(excel_bytes)} bytes")
-            print(f"Archivo incluye {len(analisis_pendientes)} registros de {usuario.correo}")
-            
-            return excel_bytes
-            
-        except ValueError as ve:
-            raise ve
-        except Exception as e:
-            error_msg = f"Error generando Excel para usuario {user_id}: {str(e)}"
-            print(f"Error: {error_msg}")
-            raise Exception(error_msg)
-        
-        
     @staticmethod
     def get_usuarios_con_pendientes(db: Session) -> Dict[str, Any]:
        """
@@ -234,32 +70,41 @@ class UsuariosPendientesService:
         raise Exception(error_msg)
     
     @staticmethod
-    def generar_excel_por_usuario(db: Session, user_id: int) -> bytes:
+    def generar_excel_por_usuario(db: Session, user_id: int, nombre_archivo: str = None) -> bytes:
         """
         Genera un archivo Excel con todos los análisis pendientes de un usuario específico
+        Opcionalmente filtrado por nombre de archivo
         """
         try:
             print(f"Generando Excel para usuario ID: {user_id}")
+            if nombre_archivo:
+                print(f"Filtrando por archivo: {nombre_archivo}")
             
             # 1. Verificar que el usuario existe
             usuario = db.query(Users).filter(Users.ID_user == user_id).first()
             if not usuario:
                 raise ValueError(f"No se encontró el usuario con ID: {user_id}")
             
-            # 2. Obtener todos los análisis pendientes del usuario
-            analisis_pendientes = (
-                db.query(AnalisisSuelosPendientes)
-                .filter(
-                    AnalisisSuelosPendientes.user_id_FK == user_id,
-                    AnalisisSuelosPendientes.estatus == 'pendiente'
-                )
-                .order_by(AnalisisSuelosPendientes.fecha_creacion.desc())
-            ).all()
+            # 2. Obtener análisis pendientes del usuario (con filtro opcional por archivo)
+            query = db.query(AnalisisSuelosPendientes).filter(
+                AnalisisSuelosPendientes.user_id_FK == user_id,
+                AnalisisSuelosPendientes.estatus == 'pendiente'
+            )
+            
+            # Aplicar filtro por nombre de archivo si se proporciona
+            if nombre_archivo:
+                query = query.filter(AnalisisSuelosPendientes.nombre_archivo == nombre_archivo)
+            
+            analisis_pendientes = query.order_by(AnalisisSuelosPendientes.fecha_creacion.desc()).all()
             
             if not analisis_pendientes:
-                raise ValueError(f"El usuario {usuario.correo} no tiene análisis pendientes")
+                if nombre_archivo:
+                    raise ValueError(f"El usuario {usuario.correo} no tiene análisis pendientes para el archivo '{nombre_archivo}'")
+                else:
+                    raise ValueError(f"El usuario {usuario.correo} no tiene análisis pendientes")
             
-            print(f"Se encontraron {len(analisis_pendientes)} análisis pendientes para {usuario.correo}")
+            mensaje_filtro = f" del archivo '{nombre_archivo}'" if nombre_archivo else ""
+            print(f"Se encontraron {len(analisis_pendientes)} análisis pendientes{mensaje_filtro} para {usuario.correo}")
             
             # 3. Preparar datos para Excel con orden lógico de columnas
             data_rows = []
@@ -322,7 +167,8 @@ class UsuariosPendientesService:
                     
                     # FK de referencia
                     'Municipio ID FK': analisis.municipio_id_FK,
-                    'User ID FK': analisis.user_id_FK
+                    'User ID FK': analisis.user_id_FK,
+                    'Nombre Archivo': analisis.nombre_archivo
                 }
                 
                 data_rows.append(row_data)
@@ -368,11 +214,12 @@ class UsuariosPendientesService:
                 resumen_data = {
                     'Información del Reporte': [
                         'Usuario ID', 'Nombre Usuario', 'Correo Usuario', 
-                        'Total Registros', 'Fecha Generación', 'Estado de Registros'
+                        'Total Registros', 'Archivo Específico', 'Fecha Generación', 'Estado de Registros'
                     ],
                     'Valores': [
                         user_id, nombre_completo, usuario.correo,
-                        len(analisis_pendientes), datetime.now().strftime('%d/%m/%Y %H:%M'), 'Pendientes'
+                        len(analisis_pendientes), nombre_archivo or 'Todos los archivos', 
+                        datetime.now().strftime('%d/%m/%Y %H:%M'), 'Pendientes'
                     ]
                 }
                 
@@ -384,7 +231,8 @@ class UsuariosPendientesService:
             excel_buffer.close()
             
             print(f"Excel generado exitosamente: {len(excel_bytes)} bytes")
-            print(f"Archivo incluye {len(analisis_pendientes)} registros de {usuario.correo}")
+            mensaje_archivo = f" del archivo '{nombre_archivo}'" if nombre_archivo else ""
+            print(f"Archivo incluye {len(analisis_pendientes)} registros{mensaje_archivo} de {usuario.correo}")
             
             return excel_bytes
             

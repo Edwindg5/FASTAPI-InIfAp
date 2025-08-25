@@ -333,3 +333,80 @@ def eliminar_validados_usuario(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al eliminar análisis de suelos validados del usuario: {str(e)}"
         )
+        
+@router.get("/validados/exportar-excel-usuario-archivo/{user_id}")
+def exportar_validados_por_usuario_y_archivo(
+    user_id: int,
+    nombre_archivo: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Exporta análisis validados de un usuario específico filtrados por nombre de archivo.
+    
+    Args:
+        user_id (int): ID del usuario
+        nombre_archivo (str): Nombre del archivo para filtrar (query parameter)
+        
+    Returns:
+        StreamingResponse: Archivo Excel con los datos filtrados
+    """
+    try:
+        # Obtener datos del servicio
+        service = AnalisisSuelosValidadosService(db)
+        resultado = service.obtener_validados_por_user_id_y_archivo(user_id, nombre_archivo)
+        
+        if not resultado["success"]:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=resultado["message"]
+            )
+        
+        # Crear el archivo Excel
+        excel_service = ExcelExportValidadosService()
+        excel_buffer = excel_service.exportar_validados_a_excel(
+            datos=resultado["datos"],
+            usuario_info=resultado["usuario_info"],
+            correo_usuario=resultado["usuario_info"]["correo"]
+        )
+        
+        if not excel_buffer:
+            # Si falla la exportación completa, intentar con versión simple
+            try:
+                excel_buffer = excel_service.crear_excel_simple(
+                    datos=resultado["datos"]
+                )
+            except Exception as simple_error:
+                print(f"Error también en Excel simple: {str(simple_error)}")
+                
+            if not excel_buffer:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Error al generar el archivo Excel"
+                )
+        
+        # Configurar respuesta de descarga
+        excel_buffer.seek(0)
+        
+        # Nombre del archivo con información específica
+        fecha_actual = datetime.now().strftime("%Y%m%d_%H%M%S")
+        usuario_info = resultado["usuario_info"]
+        nombre_usuario = f"{usuario_info.get('nombre', '')}{usuario_info.get('apellido', '')}"
+        nombre_descarga = f"Validados_Usuario{user_id}_{nombre_usuario}_{nombre_archivo}_{fecha_actual}.xlsx"
+        
+        response = StreamingResponse(
+            io.BytesIO(excel_buffer.read()),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f"attachment; filename={nombre_descarga}"
+            }
+        )
+        
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error interno del servidor: {str(e)}"
+        )
