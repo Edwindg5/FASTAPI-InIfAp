@@ -269,7 +269,7 @@ class AnalisisSuelosService:
                 'fecha_muestreo', 'parcela', 'cultivo_anterior', 'cultivo_establecer',
                 'manejo', 'tipo_vegetacion', 'nombre_tecnico', 'tel_tecnico', 'correo_tecnico',
                 'nombre_productor', 'tel_productor', 'correo_productor', 'muestra',
-                'reemplazo', 'nombre_revisor', 'estatus', 'user_id_FK'
+                'reemplazo', 'nombre_revisor', 'estatus', 'user_id_FK', 'nombre_archivo'
             ]
             
             # Crear placeholders para valores
@@ -319,7 +319,7 @@ class AnalisisSuelosService:
         return success_count, error_count, errors
     
     @staticmethod
-    def process_excel_file(file_content: bytes, user_id: int, db: Session) -> Dict[str, Any]:
+    def process_excel_file(file_content: bytes, user_id: int, nombre_archivo: str, db: Session) -> Dict[str, Any]:
         """Procesamiento mejorado de archivo Excel - PROCESANDO TODAS LAS FILAS"""
         try:
             print("🚀 INICIANDO PROCESAMIENTO DE ARCHIVO EXCEL...")
@@ -332,6 +332,7 @@ class AnalisisSuelosService:
             print("📖 Leyendo archivo Excel...")
             df = pd.read_excel(io.BytesIO(file_content), engine='openpyxl', header=1)
             print(f"📋 Archivo cargado: {len(df)} filas, {len(df.columns)} columnas")
+            print(f"📄 Nombre del archivo: {nombre_archivo}")
             
             # 3. Limpiar nombres de columnas y mostrarlas para debug
             df.columns = [str(col).strip() for col in df.columns]
@@ -454,6 +455,7 @@ class AnalisisSuelosService:
                     # Campos obligatorios
                     data['user_id_FK'] = user_id
                     data['estatus'] = 'pendiente'
+                    data['nombre_archivo'] = nombre_archivo
                     
                     # Validar número - SIEMPRE asigna
                     if data.get('numero') is None:
@@ -472,7 +474,8 @@ class AnalisisSuelosService:
                             'numero': index + 1,
                             'user_id_FK': user_id,
                             'estatus': 'pendiente',
-                            'municipio_id_FK': None
+                            'municipio_id_FK': None,
+                            'nombre_archivo': nombre_archivo
                         }
                         records_to_insert.append(minimal_data)
                     except:

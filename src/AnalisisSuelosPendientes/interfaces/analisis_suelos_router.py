@@ -35,6 +35,7 @@ router = APIRouter(
 async def upload_excel_analisis_suelos(
     file: UploadFile = File(...),
     user_id: int = Query(..., description="ID del usuario que sube el archivo"),
+    nombre_archivo: str = Query(..., description="Nombre del archivo para registrar en BD"),  # NUEVA LÍNEA
     db: Session = Depends(get_db)
 ):
     """
@@ -51,10 +52,11 @@ async def upload_excel_analisis_suelos(
         # Leer el contenido del archivo
         file_content = await file.read()
 
-        # Procesar el archivo
+        # Procesar el archivo - AGREGADO nombre_archivo
         result = AnalisisSuelosService.process_excel_file(
             file_content=file_content,
             user_id=user_id,
+            nombre_archivo=nombre_archivo,  # NUEVA LÍNEA
             db=db
         )
 
@@ -62,7 +64,6 @@ async def upload_excel_analisis_suelos(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al procesar el archivo: {str(e)}")
-
 
 @router.post("/comentario-invalido", response_model=ComentarioInvalidoResponse)
 def crear_comentario_invalido(

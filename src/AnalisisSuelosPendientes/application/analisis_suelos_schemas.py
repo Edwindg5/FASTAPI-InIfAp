@@ -40,6 +40,7 @@ class AnalisisSuelosBase(BaseModel):
     estatus: Optional[str] = None
     comentario_invalido: Optional[str] = None
     user_id_FK: Optional[int] = None
+    nombre_archivo: Optional[str] = None
 
 class AnalisisSuelosCreate(AnalisisSuelosBase):
     pass
