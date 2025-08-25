@@ -44,8 +44,6 @@ class AnalisisSuelosPendientes(Base):
     nombre_revisor = Column(String(150), nullable=True)
     estatus = Column(String(20), nullable=True)
     comentario_invalido = Column(Text, nullable=True)
-    user_id_FK = Column(Integer, ForeignKey("users.ID_user"), nullable=True)
     fecha_creacion = Column(DateTime, default=func.current_timestamp())
-    fecha_validacion = Column(DateTime, nullable=True)
     nombre_archivo = Column(String(255), nullable=True)
     

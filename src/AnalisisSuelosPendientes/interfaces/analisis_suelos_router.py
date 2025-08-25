@@ -5,6 +5,7 @@ import io
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from sqlalchemy.orm import Session
 from typing import List
+from src.AnalisisSuelosPendientes.application.archivos_pendientes_service import ArchivosPendientesService
 from src.AnalisisSuelosPendientes.infrastructure.analisis_suelos_model import AnalisisSuelosPendientes
 from src.core.database import get_db
 from src.AnalisisSuelosPendientes.application.analisis_suelos_service import AnalisisSuelosService
@@ -20,6 +21,9 @@ from src.AnalisisSuelosPendientes.application.analisis_suelos_schemas import (
     ComentarioInvalidoResponse,
     ResumenUsuariosPendientesResponse,
     ResumenUsuariosValidadosSimpleResponse,
+    PendientesPorArchivoResponse,
+    ResumenArchivosPendientesResponse,
+    PendientesPorUsuarioArchivoResponse
     
 )
 from fastapi.responses import StreamingResponse
@@ -259,3 +263,70 @@ def obtener_usuarios_con_validados(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error obteniendo usuarios con validados: {str(e)}")
 
+@router.get("/archivos-con-pendientes", response_model=ResumenArchivosPendientesResponse)
+def obtener_archivos_con_pendientes(
+    db: Session = Depends(get_db)
+):
+    """
+    Obtiene todos los archivos únicos que tienen análisis de suelos pendientes.
+    
+    **Retorna:**
+    - Lista de archivos únicos (no duplicados por usuario)
+    - Una entrada por cada archivo que tiene registros pendientes
+    - Información del usuario, fecha y nombre del archivo
+    
+    **Formato de respuesta:**
+    - nombre_usuario: Nombre completo del usuario
+    - estatus: Siempre 'pendiente'
+    - fecha: Fecha más reciente del archivo
+    - nombre_archivo: Nombre del archivo Excel procesado
+    """
+    try:
+        resultado = ArchivosPendientesService.get_archivos_con_pendientes(db)
+        return ResumenArchivosPendientesResponse(**resultado)
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error obteniendo archivos con pendientes: {str(e)}")
+
+@router.get("/pendientes-por-usuario-archivo", response_model=PendientesPorUsuarioArchivoResponse)
+def obtener_pendientes_por_usuario_archivo(
+    correo_usuario: str = Query(..., description="Correo electrónico del usuario"),
+    nombre_archivo: str = Query(..., description="Nombre del archivo a consultar"),
+    db: Session = Depends(get_db)
+):
+    """
+    Obtiene información específica de pendientes para un usuario y archivo determinado.
+    
+    **Parámetros:**
+    - correo_usuario: Correo electrónico del usuario
+    - nombre_archivo: Nombre exacto del archivo a consultar
+    
+    **Retorna:**
+    - Información detallada del usuario y archivo
+    - Cantidad exacta de registros pendientes
+    - Fecha más reciente de los registros
+    
+    **Formato de respuesta:**
+    - nombre_usuario: Nombre completo del usuario
+    - fecha: Fecha más reciente de los registros
+    - estatus: Siempre 'pendiente'
+    - cantidad_datos: Número total de registros pendientes
+    - nombre_archivo: Nombre del archivo consultado
+    
+    **Códigos de respuesta:**
+    - 200: Consulta exitosa
+    - 404: Usuario no encontrado o no tiene registros con ese archivo
+    - 500: Error interno del servidor
+    """
+    try:
+        resultado = ArchivosPendientesService.get_pendientes_por_usuario_archivo(
+            db=db,
+            correo_usuario=correo_usuario,
+            nombre_archivo=nombre_archivo
+        )
+        return PendientesPorUsuarioArchivoResponse(**resultado)
+        
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")

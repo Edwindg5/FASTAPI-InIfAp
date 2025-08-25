@@ -166,4 +166,28 @@ class AnalisisValidadoDetalleResponse(BaseModel):
     nombre_revisor: Optional[str] = None
 
 
+class PendientesPorArchivoResponse(BaseModel):
+    """Schema para mostrar archivos únicos con pendientes"""
+    nombre_usuario: str
+    estatus: str
+    fecha: Optional[datetime] = None
+    nombre_archivo: str
+    
+    class Config:
+        from_attributes = True
 
+class ResumenArchivosPendientesResponse(BaseModel):
+    """Schema para el resumen de archivos con pendientes"""
+    total_archivos_con_pendientes: int
+    archivos: List[PendientesPorArchivoResponse]
+
+class PendientesPorUsuarioArchivoResponse(BaseModel):
+    """Schema para pendientes específicos por usuario y archivo"""
+    nombre_usuario: str
+    fecha: Optional[datetime] = None
+    estatus: str
+    cantidad_datos: int
+    nombre_archivo: str
+    
+    class Config:
+        from_attributes = True
