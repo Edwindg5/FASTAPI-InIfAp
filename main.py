@@ -24,13 +24,11 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# ============================
-# Habilitar CORS
-# ============================
+
 origins = [
-    "http://localhost:4200",  # 👈 Angular en local
+    "http://localhost:4200",  
     "http://127.0.0.1:4200",
-    "https://tu-dominio.com",  # 👈 Producción (ajústalo según tu dominio)
+    "https://tu-dominio.com",  
 ]
 
 app.add_middleware(
