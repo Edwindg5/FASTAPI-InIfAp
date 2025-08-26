@@ -1,5 +1,5 @@
-# main.py
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware  # 👈 Importar el middleware
 from src.core.database import Base, engine
 from src.AnalisisQuimicosPendientes.infrastructure.analisis_quimicos_model import AnalisisQuimicosPendientes
 from src.AnalisisQuimicosPendientes.interfaces import analisis_quimicos_router
@@ -22,6 +22,24 @@ app = FastAPI(
     title="API Análisis de Suelos",
     description="API para gestión de análisis de suelos y análisis químicos",
     version="1.0.0"
+)
+
+# ============================
+# Habilitar CORS
+# ============================
+origins = [
+    "http://localhost:4200",  # 👈 Angular en local
+    "http://127.0.0.1:4200",
+    "https://tu-dominio.com",  # 👈 Producción (ajústalo según tu dominio)
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],          # permitir todos los métodos (GET, POST, PUT, DELETE...)
+    allow_headers=["*"],          # permitir todos los headers
 )
 
 # Incluir routers
