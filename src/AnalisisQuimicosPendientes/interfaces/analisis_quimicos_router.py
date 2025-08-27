@@ -1,4 +1,5 @@
 # src/AnalisisQuimicosPendientes/interfaces/analisis_quimicos_router.py
+# src/AnalisisQuimicosPendientes/interfaces/analisis_quimicos_router.py
 from datetime import datetime
 from fastapi import APIRouter, UploadFile, Depends, Form, HTTPException
 from fastapi.responses import StreamingResponse
@@ -6,12 +7,10 @@ from sqlalchemy.orm import Session
 from src.core.database import get_db
 from src.AnalisisQuimicosPendientes.application.analisis_quimicos_service import procesar_excel_y_guardar
 from src.AnalisisQuimicosPendientes.application.usuario_service import (
-    generar_excel_usuario_por_archivo,
     obtener_usuarios_con_datos_pendientes,
     generar_excel_usuario,
-    generar_excel_usuario_por_archivo,
+    generar_excel_usuario_por_archivo,  # Solo una vez
     obtener_info_usuario_para_descarga,
-    
 )
 from src.AnalisisQuimicosPendientes.infrastructure.analisis_quimicos_model import AnalisisQuimicosPendientes
 from src.Users.infrastructure.users_model import Users
@@ -43,7 +42,7 @@ class UsuarioConDatosResponse(BaseModel):
     total_registros: int
     registros_pendientes: int
     registros_invalidados: int
-    nombres_archivos: List[str] = []  # ¡NUEVO CAMPO!
+    nombres_archivos: List[str] = []  # Campo para nombres de archivos
 
 class ListaUsuariosResponse(BaseModel):
     usuarios: List[UsuarioConDatosResponse]
@@ -56,16 +55,22 @@ def _verificar_es_administrador(user_id_admin: int, db: Session) -> bool:
     """
     Verifica si el usuario es administrador (id_rol = 1)
     """
-    usuario = db.query(Users).filter(Users.ID_user == user_id_admin).first()
-    if not usuario:
+    try:
+        usuario = db.query(Users).filter(Users.ID_user == user_id_admin).first()
+        if not usuario:
+            return False
+        return usuario.rol_id_FK == 1
+    except Exception:
         return False
-    return usuario.rol_id_FK == 1
 
 def _obtener_usuario_por_correo(correo: str, db: Session) -> Optional[Users]:
     """
     Obtiene un usuario por su correo electrónico
     """
-    return db.query(Users).filter(Users.correo == correo.lower().strip()).first()
+    try:
+        return db.query(Users).filter(Users.correo == correo.lower().strip()).first()
+    except Exception:
+        return None
 
 # ======================= ENDPOINTS =======================
 
@@ -112,11 +117,10 @@ async def upload_excel(
     try:
         file_bytes = await file.read()
         
-        # ¡NUEVO PARÁMETRO! - Pasar nombre_archivo al servicio
         resumen = procesar_excel_y_guardar(
             file_bytes, 
             correo_usuario.strip(), 
-            nombre_archivo.strip(),  # ¡NUEVO!
+            nombre_archivo.strip(),
             db
         )
         
@@ -201,11 +205,11 @@ async def agregar_comentario_invalido(
             if not registros_usuario:
                 nuevo_registro = AnalisisQuimicosPendientes(
                     user_id_FK=usuario_objetivo.ID_user,
-                    municipio=None,  # Se puede agregar info básica si se requiere
+                    municipio=None,
                     localidad=None,
                     nombre_productor=None,
                     comentario_invalido=comentario,
-                    nombre_archivo="comentario_admin.xlsx",  # ¡NUEVO! - Nombre por defecto para comentarios
+                    nombre_archivo="comentario_admin.xlsx",
                     estatus="invalidado"
                 )
                 db.add(nuevo_registro)
@@ -376,7 +380,7 @@ async def verificar_y_limpiar_comentario_invalido(
             detail=f"Error interno del servidor: {str(e)}"
         )
 
-# ======================= ENDPOINT PAR USUARIOS CON DATOS PENDIENTES =======================
+# ======================= ENDPOINT PARA USUARIOS CON DATOS PENDIENTES =======================
 
 @router.get("/usuarios-con-datos-pendientes/", response_model=ListaUsuariosResponse)
 async def obtener_usuarios_con_datos_pendientes_endpoint(
@@ -399,21 +403,27 @@ async def obtener_usuarios_con_datos_pendientes_endpoint(
         usuarios = obtener_usuarios_con_datos_pendientes(db)
         
         # Convertir a formato de respuesta
-        usuarios_response = [
-            UsuarioConDatosResponse(
-                user_id=usuario["user_id"],
-                nombre_usuario=usuario["nombre_usuario"],
-                correo=usuario["correo"],
-                fecha_creacion=usuario["fecha_creacion"],
-                ultima_actualizacion=usuario["ultima_actualizacion"],
-                estatus=usuario["estatus"],
-                total_registros=usuario["total_registros"],
-                registros_pendientes=usuario["registros_pendientes"],
-                registros_invalidados=usuario["registros_invalidados"],
-                nombres_archivos=usuario["nombres_archivos"]  # ¡NUEVO CAMPO!
+        usuarios_response = []
+        for usuario in usuarios:
+            # Asegurar que nombres_archivos existe y es una lista
+            nombres_archivos = usuario.get("nombres_archivos", [])
+            if not isinstance(nombres_archivos, list):
+                nombres_archivos = []
+            
+            usuarios_response.append(
+                UsuarioConDatosResponse(
+                    user_id=usuario["user_id"],
+                    nombre_usuario=usuario["nombre_usuario"],
+                    correo=usuario["correo"],
+                    fecha_creacion=usuario["fecha_creacion"],
+                    ultima_actualizacion=usuario["ultima_actualizacion"],
+                    estatus=usuario["estatus"],
+                    total_registros=usuario["total_registros"],
+                    registros_pendientes=usuario["registros_pendientes"],
+                    registros_invalidados=usuario["registros_invalidados"],
+                    nombres_archivos=nombres_archivos
+                )
             )
-            for usuario in usuarios
-        ]
         
         return ListaUsuariosResponse(
             usuarios=usuarios_response,
@@ -422,6 +432,11 @@ async def obtener_usuarios_con_datos_pendientes_endpoint(
         )
         
     except Exception as e:
+        # Log del error completo para debugging
+        print(f"Error completo en obtener_usuarios_con_datos_pendientes_endpoint: {str(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        
         raise HTTPException(
             status_code=500,
             detail=f"Error al obtener usuarios con datos pendientes: {str(e)}"

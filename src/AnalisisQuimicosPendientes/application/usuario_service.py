@@ -17,7 +17,7 @@ from src.Users.infrastructure.users_model import Users
 def obtener_usuarios_con_datos_pendientes(db: Session) -> List[Dict[str, any]]:
     """
     Obtiene todos los usuarios que tienen registros de análisis químicos pendientes.
-    Versión simplificada sin func.case() para evitar problemas de compatibilidad.
+    Incluye los nombres de archivos únicos que ha subido cada usuario.
     
     Args:
         db: Sesión de base de datos
@@ -81,6 +81,24 @@ def obtener_usuarios_con_datos_pendientes(db: Session) -> List[Dict[str, any]]:
                 .scalar() or 0
             )
             
+            # CORREGIDO - Obtener nombres de archivos únicos del usuario (todos los registros, no solo pendientes)
+            nombres_archivos_query = (
+                db.query(distinct(AnalisisQuimicosPendientes.nombre_archivo))
+                .filter(
+                    AnalisisQuimicosPendientes.user_id_FK == user_id,
+                    AnalisisQuimicosPendientes.nombre_archivo.isnot(None),
+                    AnalisisQuimicosPendientes.nombre_archivo != ""
+                )
+                .all()
+            )
+            
+            # Extraer los nombres de archivos únicos y filtrar valores nulos/vacíos
+            nombres_archivos = []
+            for row in nombres_archivos_query:
+                nombre = row[0]  # distinct() retorna tuplas
+                if nombre and nombre.strip() and nombre.strip() != "":
+                    nombres_archivos.append(nombre.strip())
+            
             # Solo incluir si tiene registros pendientes (ya filtrado, pero por seguridad)
             if pendientes == 0:
                 continue
@@ -99,7 +117,8 @@ def obtener_usuarios_con_datos_pendientes(db: Session) -> List[Dict[str, any]]:
                 "estatus": "pendiente",  # Como filtras por pendientes, siempre hay pendientes
                 "total_registros": int(total_registros),
                 "registros_pendientes": int(pendientes),
-                "registros_invalidados": int(invalidados)
+                "registros_invalidados": int(invalidados),
+                "nombres_archivos": nombres_archivos  # Lista de nombres únicos
             })
         
         # Ordenar por fecha de última actualización (más recientes primero)
@@ -109,6 +128,8 @@ def obtener_usuarios_con_datos_pendientes(db: Session) -> List[Dict[str, any]]:
         
     except Exception as e:
         print(f"Error en obtener_usuarios_con_datos_pendientes: {str(e)}")
+        import traceback
+        print(f"Traceback completo: {traceback.format_exc()}")
         raise
 
 
@@ -190,6 +211,7 @@ def generar_excel_usuario(user_id: int, db: Session) -> Optional[bytes]:
                 "Relacion_K/Mg": float(registro.k_mg) if registro.k_mg is not None else None,
                 "Estatus": registro.estatus,
                 "Comentario_Invalido": registro.comentario_invalido,
+                "Nombre_Archivo_Original": registro.nombre_archivo,
                 "Fecha_Creacion": registro.fecha_creacion.strftime("%Y-%m-%d %H:%M:%S") if registro.fecha_creacion else None
             }
             datos.append(fila)
@@ -209,6 +231,9 @@ def generar_excel_usuario(user_id: int, db: Session) -> Optional[bytes]:
             invalidados_count = len([r for r in registros if r.estatus == "invalidado"])
             procesados_count = len([r for r in registros if r.estatus == "procesado"])
             
+            # Obtener archivos únicos
+            archivos_unicos = list(set([r.nombre_archivo for r in registros if r.nombre_archivo and r.nombre_archivo.strip()]))
+            
             # Hoja resumen
             resumen_data = {
                 "Información": [
@@ -219,6 +244,7 @@ def generar_excel_usuario(user_id: int, db: Session) -> Optional[bytes]:
                     "Registros pendientes",
                     "Registros invalidados",
                     "Registros procesados",
+                    "Archivos subidos únicos",
                     "Primera subida",
                     "Última subida",
                     "Fecha de extracción"
@@ -231,6 +257,7 @@ def generar_excel_usuario(user_id: int, db: Session) -> Optional[bytes]:
                     pendientes_count,
                     invalidados_count,
                     procesados_count,
+                    len(archivos_unicos),
                     registros[-1].fecha_creacion.strftime("%Y-%m-%d %H:%M:%S") if registros else "No disponible",
                     registros[0].fecha_creacion.strftime("%Y-%m-%d %H:%M:%S") if registros else "No disponible",
                     datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -239,6 +266,18 @@ def generar_excel_usuario(user_id: int, db: Session) -> Optional[bytes]:
             
             resumen_df = pd.DataFrame(resumen_data)
             resumen_df.to_excel(writer, sheet_name='Resumen', index=False)
+            
+            # Hoja con lista de archivos únicos
+            if archivos_unicos:
+                archivos_data = {
+                    "Nombre_Archivo": archivos_unicos,
+                    "Registros_por_Archivo": [
+                        len([r for r in registros if r.nombre_archivo == archivo])
+                        for archivo in archivos_unicos
+                    ]
+                }
+                archivos_df = pd.DataFrame(archivos_data)
+                archivos_df.to_excel(writer, sheet_name='Archivos_Subidos', index=False)
             
             # Ajustar anchos de columnas automáticamente
             for sheet_name in writer.sheets:
