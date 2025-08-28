@@ -11,16 +11,29 @@ from src.AnalisisQuimicosPendientes.application.usuario_service import (
     generar_excel_usuario,
     generar_excel_usuario_por_archivo,  # Solo una vez
     obtener_info_usuario_para_descarga,
+    obtener_comentario_invalido_por_correo
 )
 from src.AnalisisQuimicosPendientes.infrastructure.analisis_quimicos_model import AnalisisQuimicosPendientes
 from src.Users.infrastructure.users_model import Users
 from src.rol.infrastructure.rol_model import Rol  # Ajusta la ruta según tu estructura
 from pydantic import BaseModel, EmailStr
-from typing import Optional, List
+from typing import Dict, Optional, List, Any
 import io
 
 router = APIRouter(prefix="/analisis-quimicos", tags=["Análisis Químicos"])
 
+
+class ComentarioInvalidoDetalleResponse(BaseModel):
+    tiene_comentario: bool
+    comentario_invalido: Optional[str] = None
+    total_registros_con_comentario: int = 0
+    comentarios_diferentes: bool = False
+    todos_los_comentarios: Optional[List[str]] = None
+    usuario_info: Dict[str, Any]
+    fecha_ultimo_comentario: Optional[str] = None
+    registros_detalles: Optional[List[Dict[str, Any]]] = None
+    mensaje: str
+    
 # ======================= MODELOS PYDANTIC =======================
 
 class AgregarComentarioInvalidoRequest(BaseModel):
@@ -522,4 +535,48 @@ async def descargar_datos_usuario_excel(
         raise HTTPException(
             status_code=500,
             detail=f"Error interno al generar descarga: {str(e)}"
+        )
+        
+@router.get("/obtener-comentario-invalido/", response_model=ComentarioInvalidoDetalleResponse)
+async def obtener_comentario_invalido_endpoint(
+    correo_usuario: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Obtiene el comentario inválido de un usuario por su correo electrónico.
+    Solo consulta y muestra la información, no realiza modificaciones.
+    
+    Args:
+        correo_usuario: Correo del usuario (parámetro query)
+        db: Sesión de base de datos
+    
+    Returns:
+        Información detallada del comentario inválido del usuario
+    """
+    try:
+        # Validar que el correo no esté vacío
+        if not correo_usuario or not correo_usuario.strip():
+            raise HTTPException(
+                status_code=400,
+                detail="El correo del usuario es obligatorio"
+            )
+        
+        # Obtener comentario inválido
+        resultado = obtener_comentario_invalido_por_correo(correo_usuario.strip(), db)
+        
+        # Si el usuario no existe
+        if resultado is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Usuario con correo '{correo_usuario}' no encontrado"
+            )
+        
+        return ComentarioInvalidoDetalleResponse(**resultado)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al obtener comentario inválido: {str(e)}"
         )

@@ -505,3 +505,76 @@ def generar_excel_usuario_por_archivo(user_id: int, nombre_archivo: str, db: Ses
     except Exception as e:
         print(f"Error en generar_excel_usuario_por_archivo: {str(e)}")
         return None
+    
+def obtener_comentario_invalido_por_correo(correo_usuario: str, db: Session) -> Optional[Dict[str, any]]:
+    """
+    Obtiene el comentario inválido de un usuario por su correo electrónico.
+    Solo obtiene y muestra el contenido, no realiza modificaciones.
+    
+    Args:
+        correo_usuario: Correo del usuario
+        db: Sesión de base de datos
+        
+    Returns:
+        Diccionario con información del comentario inválido o None si no existe
+    """
+    try:
+        # 1. Verificar que el usuario existe
+        usuario = db.query(Users).filter(Users.correo == correo_usuario.lower().strip()).first()
+        if not usuario:
+            return None
+        
+        # 2. Buscar registros con comentarios inválidos
+        registros_con_comentarios = db.query(AnalisisQuimicosPendientes).filter(
+            AnalisisQuimicosPendientes.user_id_FK == usuario.ID_user,
+            AnalisisQuimicosPendientes.comentario_invalido.isnot(None),
+            AnalisisQuimicosPendientes.comentario_invalido != ""
+        ).order_by(AnalisisQuimicosPendientes.fecha_creacion.desc()).all()
+        
+        # 3. Si no hay comentarios inválidos
+        if not registros_con_comentarios:
+            return {
+                "tiene_comentario": False,
+                "comentario_invalido": None,
+                "total_registros_con_comentario": 0,
+                "usuario_info": {
+                    "user_id": usuario.ID_user,
+                    "nombre_completo": f"{usuario.nombre or ''} {usuario.apellido or ''}".strip(),
+                    "correo": usuario.correo
+                },
+                "mensaje": "No hay comentarios inválidos para este usuario"
+            }
+        
+        # 4. Obtener información del comentario
+        primer_registro = registros_con_comentarios[0]
+        
+        # 5. Verificar si todos los comentarios son iguales
+        comentarios_unicos = list(set([r.comentario_invalido for r in registros_con_comentarios if r.comentario_invalido]))
+        
+        return {
+            "tiene_comentario": True,
+            "comentario_invalido": primer_registro.comentario_invalido,
+            "total_registros_con_comentario": len(registros_con_comentarios),
+            "comentarios_diferentes": len(comentarios_unicos) > 1,
+            "todos_los_comentarios": comentarios_unicos if len(comentarios_unicos) > 1 else None,
+            "usuario_info": {
+                "user_id": usuario.ID_user,
+                "nombre_completo": f"{usuario.nombre or ''} {usuario.apellido or ''}".strip(),
+                "correo": usuario.correo
+            },
+            "fecha_ultimo_comentario": primer_registro.fecha_creacion.strftime("%Y-%m-%d %H:%M:%S") if primer_registro.fecha_creacion else None,
+            "registros_detalles": [
+                {
+                    "id": r.id,
+                    "comentario": r.comentario_invalido,
+                    "fecha_creacion": r.fecha_creacion.strftime("%Y-%m-%d %H:%M:%S") if r.fecha_creacion else None,
+                    "nombre_archivo": r.nombre_archivo,
+                    "estatus": r.estatus
+                } for r in registros_con_comentarios
+            ],
+            "mensaje": f"Usuario tiene {len(registros_con_comentarios)} registro(s) con comentarios inválidos"
+        }
+        
+    except Exception as e:
+        print(f"Error en obtener_comentario_invalido_por_correo: {str(e)}")
+        return None
