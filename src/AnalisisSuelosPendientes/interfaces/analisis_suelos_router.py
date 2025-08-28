@@ -42,8 +42,8 @@ router = APIRouter(
 @router.post("/upload-excel", response_model=UploadResponse)
 async def upload_excel_analisis_suelos(
     file: UploadFile = File(...),
-    correo_usuario: str = Query(..., description="Correo electrónico del usuario que sube el archivo"),
-    nombre_archivo: str = Query(..., description="Nombre del archivo para registrar en BD"),
+    user_id: int = Query(..., description="ID del usuario que sube el archivo"),
+    nombre_archivo: str = Query(..., description="Nombre del archivo para registrar en BD"),  # NUEVA LÍNEA
     db: Session = Depends(get_db)
 ):
     """
@@ -57,36 +57,21 @@ async def upload_excel_analisis_suelos(
         )
 
     try:
-        # Buscar el usuario por correo electrónico
-        from src.Users.infrastructure.users_model import Users
-        usuario = db.query(Users).filter(Users.correo == correo_usuario).first()
-        
-        if not usuario:
-            raise HTTPException(
-                status_code=404, 
-                detail=f"Usuario con correo '{correo_usuario}' no encontrado"
-            )
-        
-        user_id = usuario.ID_user
-        
         # Leer el contenido del archivo
         file_content = await file.read()
 
-        # Procesar el archivo usando el user_id obtenido
+        # Procesar el archivo - AGREGADO nombre_archivo
         result = AnalisisSuelosService.process_excel_file(
             file_content=file_content,
             user_id=user_id,
-            nombre_archivo=nombre_archivo,
+            nombre_archivo=nombre_archivo,  # NUEVA LÍNEA
             db=db
         )
 
         return UploadResponse(**result)
 
-    except HTTPException:
-        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al procesar el archivo: {str(e)}")
-
 @router.post("/comentario-invalido", response_model=ComentarioInvalidoResponse)
 def crear_comentario_invalido(
     comentario_data: ComentarioInvalidoCreate,
