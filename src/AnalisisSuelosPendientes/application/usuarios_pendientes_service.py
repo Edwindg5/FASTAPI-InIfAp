@@ -1,5 +1,4 @@
 # src/AnalisisSuelosPendientes/application/usuarios_pendientes_service.py
-
 import pandas as pd
 import io
 from datetime import datetime

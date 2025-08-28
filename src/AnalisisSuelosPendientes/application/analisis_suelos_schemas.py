@@ -168,6 +168,7 @@ class AnalisisValidadoDetalleResponse(BaseModel):
 
 class PendientesPorArchivoResponse(BaseModel):
     """Schema para mostrar archivos únicos con pendientes"""
+    user_id: int
     nombre_usuario: str
     estatus: str
     fecha: Optional[datetime] = None
@@ -200,6 +201,30 @@ class ObtenerComentarioInvalidoResponse(BaseModel):
     comentario_invalido: str
     fecha_comentario: datetime
     total_registros_afectados: int
+    
+    class Config:
+        from_attributes = True
+        
+class ArchivoUsuarioResponse(BaseModel):
+    """Schema para un archivo individual del usuario"""
+    nombre_archivo: str
+    total_registros: int
+    fecha_subida: datetime
+    ultima_modificacion: datetime
+    estatus: str
+    
+    class Config:
+        from_attributes = True
+
+class ArchivosUsuarioResponse(BaseModel):
+    """Schema para todos los archivos de un usuario"""
+    correo_usuario: str
+    nombre_usuario: str
+    user_id: int
+    total_archivos_unicos: int
+    total_registros_pendientes: int
+    fecha_consulta: datetime
+    archivos: List[ArchivoUsuarioResponse]
     
     class Config:
         from_attributes = True

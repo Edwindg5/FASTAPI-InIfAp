@@ -16,6 +16,7 @@ class ArchivosPendientesService:
             
             archivos_query = (
                 db.query(
+                    Users.ID_user.label('user_id'),  # AGREGADO: ID del usuario
                     Users.nombre.label('nombre_usuario'),
                     Users.apellido.label('apellido_usuario'),
                     func.max(AnalisisSuelosPendientes.fecha_creacion).label('fecha'),
@@ -27,6 +28,7 @@ class ArchivosPendientesService:
                     AnalisisSuelosPendientes.nombre_archivo.isnot(None)
                 )
                 .group_by(
+                    Users.ID_user,  # AGREGADO: Incluir en GROUP BY
                     Users.nombre, 
                     Users.apellido,
                     AnalisisSuelosPendientes.nombre_archivo
@@ -40,6 +42,7 @@ class ArchivosPendientesService:
                 nombre_completo = f"{archivo.nombre_usuario or ''} {archivo.apellido_usuario or ''}".strip()
                 
                 archivo_data = {
+                    'user_id': archivo.user_id,  # AGREGADO: ID del usuario
                     'nombre_usuario': nombre_completo,
                     'estatus': 'pendiente',
                     'fecha': archivo.fecha,

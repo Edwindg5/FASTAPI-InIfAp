@@ -1,4 +1,4 @@
-# Actualización del route - src/AnalisisSuelosPendientes/interfaces/analisis_suelos_router.py
+# Actualización del rout - src/AnalisisSuelosPendientes/interfaces/analisis_suelos_router.py
 
 from datetime import datetime
 import io
@@ -12,6 +12,7 @@ from src.AnalisisSuelosPendientes.application.analisis_suelos_service import Ana
 from src.AnalisisSuelosPendientes.application.usuarios_pendientes_service import UsuariosPendientesService
 from src.AnalisisSuelosPendientes.application.eliminar_pendientes_service import EliminarPendientesService
 from src.AnalisisSuelosPendientes.application.comentario_invalido_service import ComentarioInvalidoService
+from src.AnalisisSuelosPendientes.application.archivos_usuario_service import ArchivosUsuarioService
 from src.AnalisisSuelosPendientes.application.analisis_suelos_schemas import EliminarPendientesResponse
 from src.AnalisisSuelosPendientes.application.usuarios_validados_service import UsuariosValidadosService
 from src.AnalisisSuelosPendientes.application.analisis_suelos_schemas import (
@@ -25,7 +26,8 @@ from src.AnalisisSuelosPendientes.application.analisis_suelos_schemas import (
     PendientesPorArchivoResponse,
     ResumenArchivosPendientesResponse,
     PendientesPorUsuarioArchivoResponse,
-    ObtenerComentarioInvalidoResponse
+    ObtenerComentarioInvalidoResponse,
+    ArchivosUsuarioResponse
     
 )
 from fastapi.responses import StreamingResponse
@@ -40,8 +42,8 @@ router = APIRouter(
 @router.post("/upload-excel", response_model=UploadResponse)
 async def upload_excel_analisis_suelos(
     file: UploadFile = File(...),
-    user_id: int = Query(..., description="ID del usuario que sube el archivo"),
-    nombre_archivo: str = Query(..., description="Nombre del archivo para registrar en BD"),  # NUEVA LÍNEA
+    correo_usuario: str = Query(..., description="Correo electrónico del usuario que sube el archivo"),
+    nombre_archivo: str = Query(..., description="Nombre del archivo para registrar en BD"),
     db: Session = Depends(get_db)
 ):
     """
@@ -55,19 +57,33 @@ async def upload_excel_analisis_suelos(
         )
 
     try:
+        # Buscar el usuario por correo electrónico
+        from src.Users.infrastructure.users_model import Users
+        usuario = db.query(Users).filter(Users.correo == correo_usuario).first()
+        
+        if not usuario:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Usuario con correo '{correo_usuario}' no encontrado"
+            )
+        
+        user_id = usuario.ID_user
+        
         # Leer el contenido del archivo
         file_content = await file.read()
 
-        # Procesar el archivo - AGREGADO nombre_archivo
+        # Procesar el archivo usando el user_id obtenido
         result = AnalisisSuelosService.process_excel_file(
             file_content=file_content,
             user_id=user_id,
-            nombre_archivo=nombre_archivo,  # NUEVA LÍNEA
+            nombre_archivo=nombre_archivo,
             db=db
         )
 
         return UploadResponse(**result)
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al procesar el archivo: {str(e)}")
 
@@ -374,6 +390,62 @@ def obtener_comentario_invalido(
         )
         
         return ObtenerComentarioInvalidoResponse(**resultado)
+        
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
+    
+@router.get("/mis-archivos-pendientes", response_model=ArchivosUsuarioResponse)
+def obtener_archivos_pendientes_usuario(
+    correo_usuario: str = Query(..., description="Correo electrónico del usuario"),
+    db: Session = Depends(get_db)
+):
+    """
+    Obtiene todos los archivos únicos con estatus pendiente de un usuario específico.
+    
+    **Funcionalidades:**
+    - Busca archivos únicos por correo de usuario (sin duplicados)
+    - Solo muestra archivos con estatus 'pendiente'
+    - Agrupa registros por nombre_archivo único
+    - Incluye estadísticas de cada archivo
+    - Ordenado por fecha de última modificación (más recientes primero)
+    
+    **Parámetros:**
+    - correo_usuario: Correo electrónico del usuario a consultar
+    
+    **Información retornada para cada archivo:**
+    - nombre_archivo: Nombre único del archivo Excel subido
+    - total_registros: Cantidad total de registros pendientes en ese archivo
+    - fecha_subida: Primera vez que se subieron datos de este archivo
+    - ultima_modificacion: Última vez que se modificaron datos de este archivo
+    - estatus: Siempre 'pendiente'
+    
+    **Información general del usuario:**
+    - correo_usuario: Correo consultado
+    - nombre_usuario: Nombre completo del usuario
+    - user_id: ID interno del usuario
+    - total_archivos_unicos: Cantidad de archivos únicos con pendientes
+    - total_registros_pendientes: Suma total de todos los registros pendientes
+    - fecha_consulta: Momento de la consulta
+    
+    **Casos de uso:**
+    - Usuario revisa qué archivos tiene pendientes
+    - Administración verifica archivos pendientes de un usuario específico
+    - Seguimiento de archivos antes de validación
+    
+    **Códigos de respuesta:**
+    - 200: Consulta exitosa (puede retornar lista vacía si no hay archivos pendientes)
+    - 404: Usuario no encontrado
+    - 500: Error interno del servidor
+    """
+    try:
+        resultado = ArchivosUsuarioService.get_archivos_pendientes_por_correo(
+            db=db,
+            correo_usuario=correo_usuario
+        )
+        
+        return ArchivosUsuarioResponse(**resultado)
         
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
