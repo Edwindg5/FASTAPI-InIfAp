@@ -191,3 +191,15 @@ class PendientesPorUsuarioArchivoResponse(BaseModel):
     
     class Config:
         from_attributes = True
+        
+class ObtenerComentarioInvalidoResponse(BaseModel):
+    """Schema de respuesta para obtener comentario inválido"""
+    user_id: int
+    correo_usuario: str
+    nombre_usuario: str
+    comentario_invalido: str
+    fecha_comentario: datetime
+    total_registros_afectados: int
+    
+    class Config:
+        from_attributes = True

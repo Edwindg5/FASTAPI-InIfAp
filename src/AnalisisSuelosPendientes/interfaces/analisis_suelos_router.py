@@ -11,6 +11,7 @@ from src.core.database import get_db
 from src.AnalisisSuelosPendientes.application.analisis_suelos_service import AnalisisSuelosService
 from src.AnalisisSuelosPendientes.application.usuarios_pendientes_service import UsuariosPendientesService
 from src.AnalisisSuelosPendientes.application.eliminar_pendientes_service import EliminarPendientesService
+from src.AnalisisSuelosPendientes.application.comentario_invalido_service import ComentarioInvalidoService
 from src.AnalisisSuelosPendientes.application.analisis_suelos_schemas import EliminarPendientesResponse
 from src.AnalisisSuelosPendientes.application.usuarios_validados_service import UsuariosValidadosService
 from src.AnalisisSuelosPendientes.application.analisis_suelos_schemas import (
@@ -23,7 +24,8 @@ from src.AnalisisSuelosPendientes.application.analisis_suelos_schemas import (
     ResumenUsuariosValidadosSimpleResponse,
     PendientesPorArchivoResponse,
     ResumenArchivosPendientesResponse,
-    PendientesPorUsuarioArchivoResponse
+    PendientesPorUsuarioArchivoResponse,
+    ObtenerComentarioInvalidoResponse
     
 )
 from fastapi.responses import StreamingResponse
@@ -329,6 +331,49 @@ def obtener_pendientes_por_usuario_archivo(
             nombre_archivo=nombre_archivo
         )
         return PendientesPorUsuarioArchivoResponse(**resultado)
+        
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
+    
+    
+@router.get("/comentario-invalido/{correo_usuario}", response_model=ObtenerComentarioInvalidoResponse)
+def obtener_comentario_invalido(
+    correo_usuario: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Obtiene el comentario inválido de un usuario específico por su correo electrónico.
+    
+    **Funcionalidades:**
+    - Busca y retorna el comentario inválido asociado al usuario
+    - Incluye información del usuario y fecha del comentario
+    - Muestra el total de registros afectados por el comentario
+    
+    **Parámetros:**
+    - correo_usuario: Correo electrónico del usuario a consultar
+    
+    **Retorna:**
+    - user_id: ID del usuario
+    - correo_usuario: Correo electrónico del usuario
+    - nombre_usuario: Nombre completo del usuario
+    - comentario_invalido: Contenido del comentario inválido
+    - fecha_comentario: Fecha cuando se creó el comentario
+    - total_registros_afectados: Número total de registros con este comentario
+    
+    **Códigos de respuesta:**
+    - 200: Comentario encontrado exitosamente
+    - 404: Usuario no encontrado o no tiene comentarios inválidos
+    - 500: Error interno del servidor
+    """
+    try:
+        resultado = ComentarioInvalidoService.obtener_comentario_por_correo(
+            db=db,
+            correo_usuario=correo_usuario
+        )
+        
+        return ObtenerComentarioInvalidoResponse(**resultado)
         
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
